@@ -1,0 +1,15 @@
+{
+  "position": [0, 50],
+  "dialogue_pos": "left",
+  "scale": 1.25,
+  "image": "dialogueBox-senpaiMad",
+  "animations": [
+    {
+      "idle_offsets": [0, 0],
+      "loop_offsets": [0, 0],
+      "anim": "angry",
+      "idle_name": "SENPAI ANGRY IMPACT SPEECH instance",
+      "loop_name": "SENPAI ANGRY IMPACT SPEECH instance"
+    }
+  ]
+}

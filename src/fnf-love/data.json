@@ -1,0 +1,193 @@
+{
+  "weeks": [
+    {
+      "id": "tutorial",
+      "name": "Tutorial",
+      "story": true,
+      "songs": [
+        { "name": "Tutorial", "character": "girlfriend" }
+      ],
+      "color": [165, 0, 77],
+      "prop": null,
+      "title": "tutorial",
+      "funnyText": "TEACHING TIME"
+    },
+    {
+      "id": "week1",
+      "name": "Week 1",
+      "story": true,
+      "songs": [
+        { "name": "Bopeebo", "character": "daddy dearest" },
+        { "name": "Fresh", "character": "daddy dearest" },
+        { "name": "Dadbattle", "character": "daddy dearest" }
+      ],
+      "color": [146, 113, 253],
+      "prop": "Menu_Dad",
+      "title": "week1",
+      "funnyText": "DADDY DEAREST"
+    },
+    {
+      "id": "week2",
+      "name": "Week 2",
+      "story": true,
+      "songs": [
+        { "name": "Spookeez", "character": "skid and pump", "color": [213, 126, 0] },
+        { "name": "South", "character": "skid and pump", "color": [213, 126, 0] },
+        { "name": "Monster", "character": "monster", "color": [243, 255, 110] }
+      ],
+      "color": [213, 126, 0],
+      "prop": "Menu_Spooky_Kids",
+      "title": "week2",
+      "funnyText": "SPOOKY MONTH"
+    },
+    {
+      "id": "week3",
+      "name": "Week 3",
+      "story": true,
+      "songs": [
+        { "name": "Pico", "character": "pico" },
+        { "name": "Philly Nice", "character": "pico" },
+        { "name": "Blammed", "character": "pico" }
+      ],
+      "color": [183, 216, 85],
+      "prop": "Menu_Pico",
+      "title": "week3",
+      "funnyText": "PICO"
+    },
+    {
+      "id": "week4",
+      "name": "Week 4",
+      "story": true,
+      "songs": [
+        { "name": "Satin Panties", "character": "mommy mearest" },
+        { "name": "High", "character": "mommy mearest" },
+        { "name": "M.I.L.F", "character": "mommy mearest" }
+      ],
+      "color": [216, 85, 142],
+      "prop": "Menu_Mom",
+      "title": "week4",
+      "funnyText": "MOMMY MUST MURDER"
+    },
+    {
+      "id": "week5",
+      "name": "Week 5",
+      "story": true,
+      "songs": [
+        { "name": "Cocoa", "character": "dearest duo", "color": [196, 94, 174] },
+        { "name": "Eggnog", "character": "dearest duo", "color": [196, 94, 174] },
+        { "name": "Winter Horrorland", "character": "monster", "color": [243, 255, 110] }
+      ],
+      "color": [196, 94, 174],
+      "prop": "Menu_Parents",
+      "title": "week5",
+      "funnyText": "RED SNOW"
+    },
+    {
+    "id": "week6",
+    "name": "Week 6",
+    "story": true,
+    "songs": [
+        { "name": "Senpai", "character": "senpai", "color": [255, 170, 111] },
+        { "name": "Roses", "character": "senpai-angry", "color": [255, 170, 111] },
+        { "name": "Thorns", "character": "spirit", "color": [255, 60, 110] }
+    ],
+    "color": [255, 170, 111],
+    "prop": "Menu_Senpai",
+    "title": "week6",
+    "funnyText": "HATING SIMULATOR FT MOAWLING"
+    },
+    {
+      "id": "week7",
+      "name": "Week 7",
+      "story": true,
+      "songs": [
+        { "name": "Ugh", "character": "tankman" },
+        { "name": "Guns", "character": "tankman" },
+        { "name": "Stress", "character": "tankman" }
+      ],
+      "color": [225, 225, 225],
+      "prop": "Menu_Tankman",
+      "title": "week7",
+      "funnyText": "TANKMAN FT JOHNNYUTAH"
+    },
+    {
+      "id": "weekend1",
+      "name": "Weekend 1",
+      "story": true,
+      "songs": [
+        { "name": "Darnell",  "character": "darnell", "color": [115, 94, 176] },
+        { "name": "Lit Up",   "character": "darnell", "color": [115, 94, 176] },
+        { "name": "2Hot",     "character": "darnell", "color": [115, 94, 176] },
+        { "name": "Blazin'",  "character": "darnell", "color": [115, 94, 176] }
+      ],
+      "color": [115, 94, 176],
+      "prop": null,
+      "title": "weekend1",
+      "funnyText": "PICO VS DARNELL"
+    },
+    {
+      "id": "sserafim",
+      "name": "Sserafim",
+      "story": true,
+      "songs": [
+        { "name": "Spaghetti", "character": "yunjin" }
+      ],
+      "color": [223, 47, 136],
+      "prop": "spaghetti",
+      "title": "sserafim",
+      "funnyText": "LE SSERAFIM"
+    },
+    {
+      "id": "chillador",
+      "name": "Chillador",
+      "story": false,
+      "mod": true,
+      "songs": [
+        { "name": "too slow", "character": "sonic" }
+      ],
+      "color": [0, 88, 183],
+      "prop": null,
+      "title": "exe",
+      "funnyText": "Hola Soy Un Texto"
+    },
+    {
+      "id": "you-cant-run",
+      "name": "You Cant Run",
+      "story": false,
+      "mod": true,
+      "songs": [
+        { "name": "you cant run", "character": "sonic2" }
+      ],
+      "color": [22, 13, 135],
+      "prop": null,
+      "title": "exe",
+      "funnyText": "Hola Soy Un Texto"
+    },
+    {
+      "id": "endless",
+      "name": "endless",
+      "story": false,
+      "mod": true,
+      "songs": [
+        { "name": "endless", "character": "majin" }
+      ],
+      "color": [1, 2, 214],
+      "prop": null,
+      "title": "endless",
+      "funnyText": "Hola Soy Un Texto"
+    },
+    {
+      "id": "sanic",
+      "name": "Sanic",
+      "story": false,
+      "mod": true,
+      "songs": [
+        { "name": "too fest", "character": "sanic" }
+      ],
+      "color": [0, 88, 183],
+      "prop": null,
+      "title": "zazanic",
+      "funnyText": "Hola Soy Un Texto"
+    }
+  ]
+}

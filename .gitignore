@@ -1,0 +1,24 @@
+# build and release folders
+/build/
+*.exe
+*.love
+*.nro
+*.apk
+*.zip
+
+# temporary files
+.DS_Store
+Thumbs.db
+*.bak
+*.swp
+*~
+
+# vscode/editor settings
+.vscode/
+.idea/
+.claude/
+
+# love-android (ignoring android build files/downloads)
+/resources/android/love-android/
+
+

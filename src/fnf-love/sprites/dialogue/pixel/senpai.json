@@ -1,0 +1,15 @@
+{
+  "position": [0, 50],
+  "dialogue_pos": "left",
+  "scale": 1.0,
+  "image": "senpaiPortrait",
+  "animations": [
+    {
+      "idle_offsets": [0, 0],
+      "loop_offsets": [0, 0],
+      "anim": "talk",
+      "idle_name": "Senpai Portrait Enter instance",
+      "loop_name": "Senpai Portrait Enter instance"
+    }
+  ]
+}

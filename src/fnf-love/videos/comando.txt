@@ -1,0 +1,7 @@
+FOR %F IN (*.mp4) DO ffmpeg -y -i "%F" -c:v libtheora -q:v 10 -pix_fmt yuv420p -g 30 -c:a libvorbis -q:a 5 "%~nF.ogv"
+
+
+Get-ChildItem *.ogv | ForEach-Object {
+    $name = $_.BaseName
+    ffmpeg -i $_.FullName -c copy "${name}1.ogv"
+}
