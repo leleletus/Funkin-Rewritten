@@ -1,0 +1,21 @@
+{
+	"songs": [
+		["too slow", "sonic", [0, 88, 183], "too-slow"]
+	],
+
+	"weekCharacters": ["sonic", "bf", "gf"],
+	"weekBackground": "stage",
+
+	"weekName": "Chillador",
+	"storyName": "Chillador",
+	"weekBefore": "",
+	"startUnlocked": true,
+	"hideStoryMode": true,
+	"hideFreeplay": false,
+	"mod": true,
+
+	"color": [0, 88, 183],
+	"prop": null,
+	"title": "exe",
+	"funnyText": "Hola Soy Un Texto"
+}

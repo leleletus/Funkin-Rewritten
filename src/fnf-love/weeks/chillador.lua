@@ -325,7 +325,7 @@ return {
 
     initUI = function(self)
         weeks:initUI()
-        weeks:generateNotes(love.filesystem.load("charts/chillador/too-slow-hard.lua")())
+        weeks:loadChart("charts/chillador/too-slow-hard")
     end,
 
     scheduleNextStatic = function(self)

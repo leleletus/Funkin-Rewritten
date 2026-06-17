@@ -1,0 +1,23 @@
+{
+	"songs": [
+		["Spookeez",  "skid and pump", [213, 126, 0],   "spookeez"],
+		["South",     "skid and pump", [213, 126, 0],   "south"],
+		["Monster",   "monster",       [243, 255, 110],  "monster"]
+	],
+
+	"weekCharacters": ["skid and pump", "bf", "gf"],
+	"weekBackground": "spooky",
+
+	"weekName": "Week 2",
+	"storyName": "Spooky Month",
+	"weekBefore": "week1",
+	"startUnlocked": false,
+	"hideStoryMode": false,
+	"hideFreeplay": false,
+	"mod": false,
+
+	"color": [213, 126, 0],
+	"prop": "Menu_Spooky_Kids",
+	"title": "week2",
+	"funnyText": "SPOOKY MONTH"
+}

@@ -57,11 +57,11 @@ return {
 		weeks:initUI()
 
 		if song == 3 then
-			weeks:generateNotes(love.filesystem.load("charts/week2/monster" .. difficulty .. ".lua")())
+			weeks:loadChart("charts/week2/monster" .. difficulty)
 		elseif song == 2 then
-			weeks:generateNotes(love.filesystem.load("charts/week2/south" .. difficulty .. ".lua")())
+			weeks:loadChart("charts/week2/south" .. difficulty)
 		else
-			weeks:generateNotes(love.filesystem.load("charts/week2/spookeez" .. difficulty .. ".lua")())
+			weeks:loadChart("charts/week2/spookeez" .. difficulty)
 		end
 	end,
 

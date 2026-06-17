@@ -5,12 +5,12 @@
 local highscores = require("highscores")
 
 local storymenu = {}
-local data = require("data")
+local wmd = require("modules.weekMetadata")
 
--- Filtrar solo las semanas con story = true
+-- Filtrar solo las semanas que aparecen en Story Mode
 local storyWeeks = {}
-for i, week in ipairs(data.weeks) do
-    if week.story then
+for _, week in ipairs(wmd.weeks) do
+    if not week.hideStoryMode then
         table.insert(storyWeeks, week)
     end
 end
@@ -144,9 +144,8 @@ local function refresh()
     -- Construir texto de la lista de canciones (SIN dibujar aquí)
     local lines = {}
     table.insert(lines, "TRACKS")
-    for i, song in ipairs(week.songs) do
-        local songName = type(song) == "string" and song or song.name
-        table.insert(lines, songName)
+    for _, song in ipairs(week.songs) do
+        table.insert(lines, song[1])  -- songs[i] es array: [name, character, color, fileName]
     end
     -- Unir con saltos y eliminar espacios extra al inicio/fin
     trackListText = trim(table.concat(lines, "\n"))
@@ -198,8 +197,8 @@ local function selectWeek()
     selected = true
 
     -- Obtener el nombre de la primera canción de la semana
-    local firstSong = storyWeeks[currentWeekIndex].songs[1]
-    local firstSongName = type(firstSong) == "string" and firstSong or firstSong.name
+    -- songs[i] es array: [name, character, color, fileName]
+    local firstSongName = storyWeeks[currentWeekIndex].songs[1][1]
 
     -- Guardar datos de la semana
     _G.storyMode = true
@@ -208,11 +207,7 @@ local function selectWeek()
     _G.currentSongName = firstSongName
     _G.weekSongs = {}
     for _, s in ipairs(storyWeeks[currentWeekIndex].songs) do
-        if type(s) == "string" then
-            table.insert(_G.weekSongs, s)
-        else
-            table.insert(_G.weekSongs, s.name)
-        end
+        table.insert(_G.weekSongs, s[1])
     end
     _G.weekTotalScore = 0
     _G.currentSongIndex = 1

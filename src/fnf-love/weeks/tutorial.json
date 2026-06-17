@@ -1,0 +1,21 @@
+{
+	"songs": [
+		["Tutorial", "girlfriend", [165, 0, 77], "tutorial"]
+	],
+
+	"weekCharacters": ["gf", "bf", "gf"],
+	"weekBackground": "stage",
+
+	"weekName": "Tutorial",
+	"storyName": "Tutorial",
+	"weekBefore": "",
+	"startUnlocked": true,
+	"hideStoryMode": false,
+	"hideFreeplay": false,
+	"mod": false,
+
+	"color": [165, 0, 77],
+	"prop": null,
+	"title": "tutorial",
+	"funnyText": "TEACHING TIME"
+}

@@ -18,7 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ------------------------------------------------------------------------------]]
 
 
-local dialogueBox-pixel = graphics.newSprite(
+local dialogueBox_pixel = graphics.newSprite(
 	love.graphics.newImage(graphics.imagePath("dialogue/pixel/dialogueBox-pixel")),
 	{
 		{x = 0, y = 0, width = 249, height = 144, offsetX = 0, offsetY = 0, offsetWidth = 0, offsetHeight = 0}, -- 1: Text Box Appear instance 10000
@@ -33,4 +33,4 @@ local dialogueBox-pixel = graphics.newSprite(
 	"Text Box Appear instance"
 )
 
-return dialogueBox-pixel
+return dialogueBox_pixel

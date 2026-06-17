@@ -188,7 +188,7 @@ return {
 
 	initUI = function(self)
 		weeks:initUI()
-		weeks:generateNotes(love.filesystem.load("charts/sanic/too-fest-hard.lua")())
+		weeks:loadChart("charts/sanic/too-fest-hard")
 	end,
 
 	update = function(self, dt)

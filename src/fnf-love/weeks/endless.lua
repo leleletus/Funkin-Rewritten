@@ -230,7 +230,7 @@ return {
 	initUI = function(self)
 		weeks:initUI()
 
-		weeks:generateNotes(love.filesystem.load("charts/endless/endless-hard.lua")())
+		weeks:loadChart("charts/endless/endless-hard")
 
 		self.events = {}
 		local json = require("lib.json")

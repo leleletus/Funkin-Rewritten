@@ -17,9 +17,12 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ------------------------------------------------------------------------------]]
 
-local song, difficulty
+local json         = require("lib.json")
+local psychChars   = require("charts.psych.characters")
+local stage        = require("stages.stage.stage")
 
-local stageBack, stageFront, curtains
+local weekJSON = json.decode(love.filesystem.read("weeks/week1.json"))
+local song, difficulty
 
 return {
 	enter = function(self, from, songNum, songAppend, isStoryMode, songName)
@@ -31,46 +34,30 @@ return {
 	load = function(self)
 		weeks:load()
 
-		if song == 3 then
-			inst = love.audio.newSource("music/week1/dadbattle-inst.ogg", "stream")
-			voices = love.audio.newSource("music/week1/dadbattle-voices.ogg", "stream")
-		elseif song == 2 then
-			inst = love.audio.newSource("music/week1/fresh-inst.ogg", "stream")
-			voices = love.audio.newSource("music/week1/fresh-voices.ogg", "stream")
-		else
-			inst = love.audio.newSource("music/week1/bopeebo-inst.ogg", "stream")
-			voices = love.audio.newSource("music/week1/bopeebo-voices.ogg", "stream")
-		end
+		local fileName = weekJSON.songs[song][4]
+		inst   = love.audio.newSource("music/week1/" .. fileName .. "-inst.ogg",   "stream")
+		voices = love.audio.newSource("music/week1/" .. fileName .. "-voices.ogg", "stream")
 
 		self:initUI()
-
 		weeks:setupCountdown()
 	end,
 
 	initUI = function(self)
 		weeks:initUI()
 
-		if song == 3 then
-			weeks:generateNotes(love.filesystem.load("charts/week1/dadbattle" .. difficulty .. ".lua")())
-		elseif song == 2 then
-			weeks:generateNotes(love.filesystem.load("charts/week1/fresh" .. difficulty .. ".lua")())
-		else
-			weeks:generateNotes(love.filesystem.load("charts/week1/bopeebo" .. difficulty .. ".lua")())
-		end
+		local fileName = weekJSON.songs[song][4]
+		weeks:loadChart("data/" .. fileName .. "/" .. fileName .. difficulty)
 	end,
 
 	update = function(self, dt)
 		weeks:update(dt)
-
-		if song == 1 and musicThres ~= oldMusicThres and math.fmod(absMusicTime + 500, 480000 / bpm) < 100 then
-			weeks:safeAnimate(boyfriend, "hey", false, 3)
-		end
+		stage.update(dt)
 
 		if not (countingDown or graphics.isFading()) and weeks.songEnded then
 			if _G.storyMode and song < 3 then
 				song = song + 1
 				_G.currentSongIndex = song
-				_G.currentSongName = _G.weekSongs[song]
+				_G.currentSongName  = _G.weekSongs[song]
 				self:load()
 			end
 		end
@@ -79,60 +66,28 @@ return {
 	end,
 
 	draw = function(self)
-		love.graphics.push()
-			love.graphics.translate(graphics.getWidth() / 2, graphics.getHeight() / 2)
-			love.graphics.scale(cam.sizeX, cam.sizeY)
-
-			love.graphics.push()
-				love.graphics.translate(cam.x * 0.9, cam.y * 0.9)
-
-				stageBack:draw()
-				stageFront:draw()
-
-				girlfriend:draw()
-			love.graphics.pop()
-			love.graphics.push()
-				love.graphics.translate(cam.x, cam.y)
-
-				enemy:draw()
-				boyfriend:draw()
-			love.graphics.pop()
-			love.graphics.push()
-				love.graphics.translate(cam.x * 1.1, cam.y * 1.1)
-
-				curtains:draw()
-			love.graphics.pop()
-			weeks:drawRating(0.9)
-		love.graphics.pop()
-
-		weeks:drawUI()
+		stage.draw()    -- fondos, personajes, efectos (incluye weeks:drawRating())
+		weeks:drawUI()  -- HUD, notas, UI de juego
 	end,
 
 	loadStage = function(self, songNum, songAppend)
-		song = songNum
+		song       = songNum
 		difficulty = songAppend
 
-		stageBack = graphics.newImage(love.graphics.newImage(graphics.imagePath("week1/stage-back")))
-		stageFront = graphics.newImage(love.graphics.newImage(graphics.imagePath("week1/stage-front")))
-		curtains = graphics.newImage(love.graphics.newImage(graphics.imagePath("week1/curtains")))
-
-		stageFront.y = 400
-		curtains.y = -100
-
-		enemy = love.filesystem.load("sprites/week1/daddy-dearest.lua")()
-
-		girlfriend.x, girlfriend.y = 30, -90
-		enemy.x, enemy.y = -380, -110
-		boyfriend.x, boyfriend.y = 260, 100
-
+		-- En Psych Engine los personajes se cargan desde SONG.player1/player2/gfVersion
+		-- (chart JSON). Aquí usamos weekCharacters como aproximación hasta implementar
+		-- la carga post-chart.
+		local chars = weekJSON.weekCharacters
+		psychChars.loadInto("enemy",      chars[1])  -- "dad"
+		psychChars.loadInto("boyfriend",  chars[2])  -- "bf"
+		psychChars.loadInto("girlfriend", chars[3])  -- "gf"
 		enemyIcon:animate("daddy dearest", false)
+
+		stage.load()
 	end,
 
 	leave = function(self)
-		stageBack = nil
-		stageFront = nil
-		curtains = nil
-
+		stage.leave()
 		weeks:leave()
-	end
+	end,
 }

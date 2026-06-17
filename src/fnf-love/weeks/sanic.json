@@ -1,0 +1,21 @@
+{
+	"songs": [
+		["too fest", "sanic", [0, 88, 183], "too-fest"]
+	],
+
+	"weekCharacters": ["sanic", "bf", "gf"],
+	"weekBackground": "stage",
+
+	"weekName": "Sanic",
+	"storyName": "Sanic",
+	"weekBefore": "",
+	"startUnlocked": true,
+	"hideStoryMode": true,
+	"hideFreeplay": false,
+	"mod": true,
+
+	"color": [0, 88, 183],
+	"prop": null,
+	"title": "zazanic",
+	"funnyText": "Hola Soy Un Texto"
+}

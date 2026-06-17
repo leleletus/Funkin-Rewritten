@@ -1,0 +1,23 @@
+{
+	"songs": [
+		["Cocoa",              "dearest duo", [196, 94, 174],  "cocoa"],
+		["Eggnog",             "dearest duo", [196, 94, 174],  "eggnog"],
+		["Winter Horrorland",  "monster",     [243, 255, 110], "winter-horrorland"]
+	],
+
+	"weekCharacters": ["mom-car", "bf", "gf"],
+	"weekBackground": "mall",
+
+	"weekName": "Week 5",
+	"storyName": "Red Snow",
+	"weekBefore": "week4",
+	"startUnlocked": false,
+	"hideStoryMode": false,
+	"hideFreeplay": false,
+	"mod": false,
+
+	"color": [196, 94, 174],
+	"prop": "Menu_Parents",
+	"title": "week5",
+	"funnyText": "RED SNOW"
+}

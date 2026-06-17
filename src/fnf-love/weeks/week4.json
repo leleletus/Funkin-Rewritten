@@ -1,0 +1,23 @@
+{
+	"songs": [
+		["Satin Panties", "mommy mearest", [216, 85, 142], "satin-panties"],
+		["High",          "mommy mearest", [216, 85, 142], "high"],
+		["M.I.L.F",       "mommy mearest", [216, 85, 142], "milf"]
+	],
+
+	"weekCharacters": ["mom", "bf", "gf"],
+	"weekBackground": "limo",
+
+	"weekName": "Week 4",
+	"storyName": "Mommy Must Murder",
+	"weekBefore": "week3",
+	"startUnlocked": false,
+	"hideStoryMode": false,
+	"hideFreeplay": false,
+	"mod": false,
+
+	"color": [216, 85, 142],
+	"prop": "Menu_Mom",
+	"title": "week4",
+	"funnyText": "MOMMY MUST MURDER"
+}

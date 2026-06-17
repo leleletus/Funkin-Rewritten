@@ -25,6 +25,24 @@ local jumpscare = require("events.jumpscare")  -- Carga el módulo jumpscare
 local spoopyscare = require("events.spoopyscare")
 local icons = require("sprites.icons")
 
+local psychLoader = require("charts.psych.loader")
+local psychEventDispatcher = require("charts.psych.events")
+local psychCharacters = require("charts.psych.characters")
+local psychStages = require("charts.psych.stages")
+local psychNoteTypes = require("charts.psych.notetypes")
+
+-- Los 6 tipos de nota incorporados de Psych Engine (objects/Note.hx
+-- defaultNoteTypes). Cualquier otro noteTypeStr se trata como tipo
+-- personalizado (custom_notetypes/<nombre>.txt, ver charts/psych/notetypes.lua).
+local BUILTIN_NOTE_TYPES = {
+	[""] = true,
+	["Alt Animation"] = true,
+	["Hey!"] = true,
+	["Hurt Note"] = true,
+	["GF Sing"] = true,
+	["No Animation"] = true,
+}
+
 -- ==========================================================
 -- OPT: Helper de outline — 4 diagonales en vez de 24 offsets
 -- ==========================================================
@@ -130,10 +148,37 @@ local characterColors = {
 	crappyfriend = {49, 176, 209}
 }
 
-camScale = {x = 1, y = 1}   -- zoom base para el efecto de beat
+camScale = {x = 1, y = 1}   -- zoom base para el efecto de beat (defaultCamZoom de Psych)
+
+-- "Empuje" de zoom momentáneo sobre camScale ("Add Camera Zoom" de Psych):
+-- decae exponencialmente hacia 0 cada frame (ver update), igual que
+-- FlxG.camera.zoom = lerp(defaultCamZoom, FlxG.camera.zoom, exp(-elapsed*3.125))
+-- en PlayState.hx, que hace que el zoom añadido vuelva solo al normal.
+camZoomBump = {x = 0, y = 0}
 
 cameraEvents = {}
+
+-- Replica moveCamera(false) de Psych (PlayState.hx): camFollow.x -=
+-- bf.cameraPosition[0]; camFollow.y += bf.cameraPosition[1] (con
+-- camera_boyfriend del stage = [0,0]). cam = -camFollow + cte, así que
+-- cam.x += camPos.x, cam.y -= camPos.y.
+local function bfCamTarget()
+	local p = boyfriend.psychChar and boyfriend.psychChar.camera_position or {0, 0}
+	return -boyfriend.x + 100 + (p[1] or 0), -boyfriend.y + 75 - (p[2] or 0)
+end
+
+-- Replica moveCamera(true) de Psych: camFollow += dad.cameraPosition (con
+-- camera_opponent del stage = [0,0]). cam = -camFollow + cte, así que
+-- cam.x -= camPos.x, cam.y -= camPos.y.
+local function enemyCamTarget()
+	local p = enemy.psychChar and enemy.psychChar.camera_position or {0, 0}
+	return -enemy.x - 100 - (p[1] or 0), -enemy.y + 75 - (p[2] or 0)
+end
+
+gfDanceBeats = gfDanceBeats or 2  -- cada cuántos beats baila girlfriend ("Set GF Speed" de Psych)
+local psychEvents = {}  -- eventos de chart Psych pendientes, ordenados por tiempo
 local spriteTimers = {}
+local gfDanceLeft = false  -- alterna danceLeft/danceRight para personajes Psych (gf, etc.)
 misses = 0
 customGirlfriendIdle = customGirlfriendIdle or false
 
@@ -385,7 +430,7 @@ return {
 		end
 		useAltAnims = false
 
-		cam.x, cam.y = -boyfriend.x + 100, -boyfriend.y + 75
+		cam.x, cam.y = bfCamTarget()
 
 		rating.x = girlfriend.x
 		for i = 1, 3 do
@@ -566,10 +611,92 @@ return {
 		end
 	end,
 
+	-- Carga un chart desde basePath (sin extensión): si existe basePath..".json"
+	-- en formato Psych Engine, lo convierte y aplica sus metadatos
+	-- (personajes/stage/eventos); si no, carga basePath..".lua" como siempre
+	-- (comportamiento 100% idéntico al actual, sin meta).
+	loadChart = function(self, basePath)
+		local chart, meta
+
+		-- Cuando se llega desde el editor de charts (test-play), usar el song
+		-- en memoria directamente para garantizar que los cambios no guardados
+		-- o no reflejados en disco se usen igualmente.
+		if _G.chartEditorPreviewSong then
+			chart, meta = psychLoader.loadFromData(_G.chartEditorPreviewSong)
+			-- No limpiamos aquí para que Restart Song pueda reusar el mismo chart.
+			-- Se limpia en pause.lua al hacer "Exit to menu".
+		end
+
+		if not chart then
+			chart, meta = psychLoader.load(basePath)
+		end
+
+		if not chart then
+			chart = love.filesystem.load(basePath .. ".lua")()
+		end
+
+		self:generateNotes(chart)
+
+		if meta then
+			self:applyChartMeta(meta)
+		end
+	end,
+
+	-- Aplica los metadatos de un chart Psych (player1/player2/gfVersion/stage,
+	-- eventos) sobre el estado actual del week. Personajes/stages sin sprite
+	-- Lua equivalente generan un warning y se ignoran (ver charts/psych/*).
+	applyChartMeta = function(self, meta)
+		psychEvents = {}
+		for _, ev in ipairs(meta.events or {}) do
+			table.insert(psychEvents, ev)
+		end
+
+		local bfChanged, gfChanged = false, false
+
+		if meta.player1 then
+			local ok, entry = psychCharacters.loadInto("boyfriend", meta.player1)
+			if ok then
+				bfChanged = true
+				if entry.icon and boyfriendIcon then boyfriendIcon:animate(entry.icon, false) end
+			end
+		end
+
+		if meta.player2 then
+			local ok, entry = psychCharacters.loadInto("enemy", meta.player2)
+			if ok and entry.icon and enemyIcon then
+				enemyIcon:animate(entry.icon, false)
+			end
+		end
+
+		if meta.gfVersion then
+			if psychCharacters.loadInto("girlfriend", meta.gfVersion) then
+				gfChanged = true
+			end
+		end
+
+		if meta.stage and psychStages.apply(meta.stage) then
+			bfChanged = true
+			gfChanged = true
+		end
+
+		if bfChanged then
+			cam.x, cam.y = bfCamTarget()
+		end
+
+		if gfChanged then
+			rating.x = girlfriend.x
+			for i = 1, 3 do
+				numbers[i].x = girlfriend.x - 100 + 50 * i
+			end
+		end
+	end,
+
 	generateNotes = function(self, chart)
 		local eventBpm
 		local tiempo_acumulado = 0
 		local bpm_anterior = nil
+
+		psychEvents = {}
 
 		for i = 1, #chart do
 			bpm = chart[i].bpm
@@ -597,24 +724,23 @@ return {
 			local bpm_activo = eventBpm or bpm_anterior or bpm
 			local duracion_seccion = (lengthInSteps / 16.0) * (240000.0 / bpm_activo)
 
-			-- Detectar cambio de BPM en sección vacía
-			if eventBpm and eventBpm ~= bpm_anterior then
-				if #seccion.sectionNotes == 0 then
-					table.insert(events, {
-						eventTime = tiempo_acumulado,
-						mustHitSection = seccion.mustHitSection or false,
-						bpm = eventBpm,
-						altAnim = seccion.altAnim or false
-					})
-				end
-				bpm_anterior = eventBpm
-			end
+			-- Evento de cambio de sección: SIEMPRE uno por sección (con o sin
+			-- notas), anclado a sectionStartTime (tiempo_acumulado al inicio
+			-- de esta sección). Así mustHitSection/altAnim/bpm se aplican en
+			-- el momento correcto aunque la sección no tenga notas, igual que
+			-- PlayState.hx de Psych (basado en sectionLength, no en notas).
+			table.insert(events, {
+				eventTime = tiempo_acumulado,
+				mustHitSection = seccion.mustHitSection or false,
+				bpm = eventBpm,
+				altAnim = seccion.altAnim or false
+			})
+			bpm_anterior = bpm_activo
 
 			for j = 1, #seccion.sectionNotes do
 				local sprite
 
 				local mustHitSection = seccion.mustHitSection
-				local altAnim = seccion.altAnim
 				local noteType = seccion.sectionNotes[j].noteType
 				local noteTime = seccion.sectionNotes[j].noteTime
 				local noteKind = seccion.sectionNotes[j].noteKind  -- Blazin fight note kind
@@ -625,10 +751,6 @@ return {
 					currentHoldGroupId = nextGroupId
 					nextGroupId = nextGroupId + 1
 					holdGroupsInfo[currentHoldGroupId] = {hitCount = 0, totalNotes = 0, missed = false, completed = false, ratingType = nil}
-				end
-
-				if j == 1 then
-					table.insert(events, {eventTime = seccion.sectionNotes[1].noteTime, mustHitSection = mustHitSection, bpm = eventBpm, altAnim = altAnim})
 				end
 
 				if noteType == 0 or noteType == 4 then
@@ -652,6 +774,13 @@ return {
 							newNote.sizeX, newNote.sizeY = noteScale, noteScale
 							newNote.noteKind = noteKind
 							table.insert(enemyNotes[id], newNote)
+							newNote.gfNote = seccion.sectionNotes[j].gfNote or false
+								newNote.noteTypeStr = seccion.sectionNotes[j].noteTypeStr
+								newNote.noAnimation = (newNote.noteTypeStr == "No Animation")
+								newNote.isMine = (newNote.noteTypeStr == "Hurt Note")
+								if newNote.noteTypeStr and not BUILTIN_NOTE_TYPES[newNote.noteTypeStr] then
+									psychNoteTypes.apply(newNote, newNote.noteTypeStr)
+								end
 							enemyNotes[id][c].x = x
 							enemyNotes[id][c].y = 375 - noteTime * 0.6 * speed
 							enemyNotes[id][c].strumTime = noteTime
@@ -705,6 +834,13 @@ return {
 							newNote.sizeX, newNote.sizeY = noteScale, noteScale
 							newNote.noteKind = noteKind
 							table.insert(boyfriendNotes[id], newNote)
+							newNote.gfNote = seccion.sectionNotes[j].gfNote or false
+								newNote.noteTypeStr = seccion.sectionNotes[j].noteTypeStr
+								newNote.noAnimation = (newNote.noteTypeStr == "No Animation")
+								newNote.isMine = (newNote.noteTypeStr == "Hurt Note")
+								if newNote.noteTypeStr and not BUILTIN_NOTE_TYPES[newNote.noteTypeStr] then
+									psychNoteTypes.apply(newNote, newNote.noteTypeStr)
+								end
 							boyfriendNotes[id][c].x = x
 							boyfriendNotes[id][c].y = 375 - noteTime * 0.6 * speed
 							boyfriendNotes[id][c].strumTime = noteTime
@@ -759,6 +895,13 @@ return {
 							newNote.sizeX, newNote.sizeY = noteScale, noteScale
 							newNote.noteKind = noteKind
 							table.insert(boyfriendNotes[id], newNote)
+							newNote.gfNote = seccion.sectionNotes[j].gfNote or false
+								newNote.noteTypeStr = seccion.sectionNotes[j].noteTypeStr
+								newNote.noAnimation = (newNote.noteTypeStr == "No Animation")
+								newNote.isMine = (newNote.noteTypeStr == "Hurt Note")
+								if newNote.noteTypeStr and not BUILTIN_NOTE_TYPES[newNote.noteTypeStr] then
+									psychNoteTypes.apply(newNote, newNote.noteTypeStr)
+								end
 							boyfriendNotes[id][c].x = x
 							boyfriendNotes[id][c].y = 375 - noteTime * 0.6 * speed
 							boyfriendNotes[id][c].strumTime = noteTime
@@ -809,6 +952,13 @@ return {
 							newNote.sizeX, newNote.sizeY = noteScale, noteScale
 							newNote.noteKind = noteKind
 							table.insert(enemyNotes[id], newNote)
+							newNote.gfNote = seccion.sectionNotes[j].gfNote or false
+								newNote.noteTypeStr = seccion.sectionNotes[j].noteTypeStr
+								newNote.noAnimation = (newNote.noteTypeStr == "No Animation")
+								newNote.isMine = (newNote.noteTypeStr == "Hurt Note")
+								if newNote.noteTypeStr and not BUILTIN_NOTE_TYPES[newNote.noteTypeStr] then
+									psychNoteTypes.apply(newNote, newNote.noteTypeStr)
+								end
 							enemyNotes[id][c].x = x
 							enemyNotes[id][c].y = 375 - noteTime * 0.6 * speed
 							enemyNotes[id][c].strumTime = noteTime
@@ -863,6 +1013,13 @@ return {
 							newNote.sizeX, newNote.sizeY = noteScale, noteScale
 							newNote.noteKind = noteKind
 							table.insert(enemyNotes[id], newNote)
+							newNote.gfNote = seccion.sectionNotes[j].gfNote or false
+								newNote.noteTypeStr = seccion.sectionNotes[j].noteTypeStr
+								newNote.noAnimation = (newNote.noteTypeStr == "No Animation")
+								newNote.isMine = (newNote.noteTypeStr == "Hurt Note")
+								if newNote.noteTypeStr and not BUILTIN_NOTE_TYPES[newNote.noteTypeStr] then
+									psychNoteTypes.apply(newNote, newNote.noteTypeStr)
+								end
 							enemyNotes[id][c].x = x
 							enemyNotes[id][c].y = -375 + noteTime * 0.6 * speed
 							enemyNotes[id][c].strumTime = noteTime
@@ -912,6 +1069,13 @@ return {
 							newNote.sizeX, newNote.sizeY = noteScale, noteScale
 							newNote.noteKind = noteKind
 							table.insert(boyfriendNotes[id], newNote)
+							newNote.gfNote = seccion.sectionNotes[j].gfNote or false
+								newNote.noteTypeStr = seccion.sectionNotes[j].noteTypeStr
+								newNote.noAnimation = (newNote.noteTypeStr == "No Animation")
+								newNote.isMine = (newNote.noteTypeStr == "Hurt Note")
+								if newNote.noteTypeStr and not BUILTIN_NOTE_TYPES[newNote.noteTypeStr] then
+									psychNoteTypes.apply(newNote, newNote.noteTypeStr)
+								end
 							boyfriendNotes[id][c].x = x
 							boyfriendNotes[id][c].y = -375 + noteTime * 0.6 * speed
 							boyfriendNotes[id][c].strumTime = noteTime
@@ -963,6 +1127,13 @@ return {
 							newNote.sizeX, newNote.sizeY = noteScale, noteScale
 							newNote.noteKind = noteKind
 							table.insert(boyfriendNotes[id], newNote)
+							newNote.gfNote = seccion.sectionNotes[j].gfNote or false
+								newNote.noteTypeStr = seccion.sectionNotes[j].noteTypeStr
+								newNote.noAnimation = (newNote.noteTypeStr == "No Animation")
+								newNote.isMine = (newNote.noteTypeStr == "Hurt Note")
+								if newNote.noteTypeStr and not BUILTIN_NOTE_TYPES[newNote.noteTypeStr] then
+									psychNoteTypes.apply(newNote, newNote.noteTypeStr)
+								end
 							boyfriendNotes[id][c].x = x
 							boyfriendNotes[id][c].y = -375 + noteTime * 0.6 * speed
 							boyfriendNotes[id][c].strumTime = noteTime
@@ -1012,6 +1183,13 @@ return {
 							newNote.sizeX, newNote.sizeY = noteScale, noteScale
 							newNote.noteKind = noteKind
 							table.insert(enemyNotes[id], newNote)
+							newNote.gfNote = seccion.sectionNotes[j].gfNote or false
+								newNote.noteTypeStr = seccion.sectionNotes[j].noteTypeStr
+								newNote.noAnimation = (newNote.noteTypeStr == "No Animation")
+								newNote.isMine = (newNote.noteTypeStr == "Hurt Note")
+								if newNote.noteTypeStr and not BUILTIN_NOTE_TYPES[newNote.noteTypeStr] then
+									psychNoteTypes.apply(newNote, newNote.noteTypeStr)
+								end
 							enemyNotes[id][c].x = x
 							enemyNotes[id][c].y = -375 + noteTime * 0.6 * speed
 							enemyNotes[id][c].strumTime = noteTime
@@ -1315,9 +1493,11 @@ return {
 					if not _G.disableAutoCam then
 						currentMustHit = events[i].mustHitSection or false
 						if currentMustHit then
-							camTimer = Timer.tween(1.25, cam, {x = -boyfriend.x + 100, y = -boyfriend.y + 75}, "out-quad")
+							local tx, ty = bfCamTarget()
+							camTimer = Timer.tween(1.25, cam, {x = tx, y = ty}, "out-quad")
 						else
-							camTimer = Timer.tween(1.25, cam, {x = -enemy.x - 100, y = -enemy.y + 75}, "out-quad")
+							local tx, ty = enemyCamTarget()
+							camTimer = Timer.tween(1.25, cam, {x = tx, y = ty}, "out-quad")
 						end
 					end
 
@@ -1351,11 +1531,9 @@ return {
 						if highlightCamTimer then Timer.cancel(highlightCamTimer) end
 						local targetX, targetY
 						if highlightTarget == "enemy" then
-							targetX = -enemy.x - 100
-							targetY = -enemy.y + 75
+							targetX, targetY = enemyCamTarget()
 						else
-							targetX = -boyfriend.x + 100
-							targetY = -boyfriend.y + 75
+							targetX, targetY = bfCamTarget()
 						end
 						highlightCamTimer = Timer.tween(1.25, cam, {x = targetX, y = targetY}, "out-quad", function() highlightCamTimer = nil end)
 						table.remove(cameraEvents, i)
@@ -1373,9 +1551,11 @@ return {
 							end
 						end
 						if currentSectionMustHit then
-							camTimer = Timer.tween(1.25, cam, {x = -boyfriend.x + 100, y = -boyfriend.y + 75}, "out-quad")
+							local tx, ty = bfCamTarget()
+							camTimer = Timer.tween(1.25, cam, {x = tx, y = ty}, "out-quad")
 						else
-							camTimer = Timer.tween(1.25, cam, {x = -enemy.x - 100, y = -enemy.y + 75}, "out-quad")
+							local tx, ty = enemyCamTarget()
+							camTimer = Timer.tween(1.25, cam, {x = tx, y = ty}, "out-quad")
 						end
 						table.remove(cameraEvents, i)
 
@@ -1383,6 +1563,14 @@ return {
 						-- No se eliminan eventos de tipo desconocido
 					end
 				end
+
+			-- Eventos de chart Psych (Hey!, Play Animation, Change Character, ...)
+			for i = #psychEvents, 1, -1 do
+				if musicTime >= psychEvents[i].time then
+					psychEventDispatcher.trigger(psychEvents[i])
+					table.remove(psychEvents, i)
+				end
+			end
 
 			-- Beat pulse update (reemplaza el antiguo zoom rítmico por tweens)
 			if bpm and bpm > 0 then
@@ -1425,9 +1613,15 @@ return {
 				beatPulse = 1
 			end
 
-			-- Aplicar el pulso a la cámara (escala final = escala base * pulso)
-			cam.sizeX = camScale.x * beatPulse
-			cam.sizeY = camScale.y * beatPulse
+			-- Decaimiento del empuje de "Add Camera Zoom" hacia 0 (vuelve solo a
+			-- camScale, igual que el lerp hacia defaultCamZoom de Psych)
+			local zoomDecay = math.exp(-dt * 3.125)
+			camZoomBump.x = camZoomBump.x * zoomDecay
+			camZoomBump.y = camZoomBump.y * zoomDecay
+
+			-- Aplicar el pulso y el empuje de zoom a la cámara
+			cam.sizeX = (camScale.x + camZoomBump.x) * beatPulse
+			cam.sizeY = (camScale.y + camZoomBump.y) * beatPulse
 
 			-- Mantener el tween de cámara activo cada frame para que siempre apunte
 			-- al personaje correcto (necesario cuando los personajes cambian de posición,
@@ -1436,9 +1630,11 @@ return {
 			if not _G.disableAutoCam and not highlightActive then
 				if camTimer then Timer.cancel(camTimer) end
 				if currentMustHit then
-					camTimer = Timer.tween(1.25, cam, {x = -boyfriend.x + 100, y = -boyfriend.y + 75}, "out-quad")
+					local tx, ty = bfCamTarget()
+					camTimer = Timer.tween(1.25, cam, {x = tx, y = ty}, "out-quad")
 				else
-					camTimer = Timer.tween(1.25, cam, {x = -enemy.x - 100, y = -enemy.y + 75}, "out-quad")
+					local tx, ty = enemyCamTarget()
+					camTimer = Timer.tween(1.25, cam, {x = tx, y = ty}, "out-quad")
 				end
 			end
 
@@ -1475,14 +1671,20 @@ return {
 				end
 			end
 
-			if musicThres ~= oldMusicThres and math.fmod(absMusicTime, 120000 / bpm) < 100 then
+			if musicThres ~= oldMusicThres and math.fmod(absMusicTime, (60000 / bpm) * gfDanceBeats) < 100 then
 				if not customGirlfriendIdle then
 					if spriteTimers[1] == 0 then
 						-- No interrumpir "sad" si aún está animándose
 						local gfAnim = girlfriend:getAnimName()
 						if not (gfAnim == "sad" and girlfriend:isAnimated()) then
-							girlfriend:animate("idle", false)
-							girlfriend:setAnimSpeed(14.4 / (60 / bpm))
+							local gfAnims = girlfriend:getAnims()
+							if gfAnims["danceLeft"] and gfAnims["danceRight"] then
+								gfDanceLeft = not gfDanceLeft
+								girlfriend:animate(gfDanceLeft and "danceLeft" or "danceRight", false)
+							else
+								girlfriend:animate("idle", false)
+								girlfriend:setAnimSpeed(14.4 / (60 / bpm))
+							end
 						end
 					end
 				end
@@ -1565,10 +1767,12 @@ return {
 						-- Blazin fight: interceptar notas con noteKind
 						if enemyNote[1].noteKind and _G.currentWeek and _G.currentWeek.onEnemyNoteHit then
 							_G.currentWeek.onEnemyNoteHit(enemyNote[1].noteKind)
-						elseif shouldUseAlt then
-							self:safeAnimate(enemy, curAnim .. " alt", false, 2)
-						else
-							self:safeAnimate(enemy, curAnim, false, 2)
+						elseif not enemyNote[1].noAnimation then
+							if shouldUseAlt then
+								self:safeAnimate(enemy, curAnim .. " alt", false, 2)
+							else
+								self:safeAnimate(enemy, curAnim, false, 2)
+							end
 						end
 						-- Revisar si la siguiente nota es un hold para iniciar el splash
 						if #enemyNote > 1 then
@@ -1585,6 +1789,17 @@ return {
 							end
 						end
 					end
+
+					if enemyNote[1].gfNote then
+						self:safeAnimate(girlfriend, curAnim, false, 1)
+					end
+
+					-- Tipo de nota "Hey!" en una nota del oponente: igual efecto
+					-- que el evento de chart "Hey!" (ver charts/psych/events.lua).
+					if enemyNote[1].noteTypeStr == "Hey!" then
+						psychEventDispatcher.trigger({name = "Hey!"})
+					end
+
 					table.remove(enemyNote, 1)
 				end
 			end
@@ -1692,8 +1907,20 @@ return {
 									if _G.currentWeek and _G.currentWeek.customNoteHit then
 										handled = _G.currentWeek:customNoteHit(curAnim, currentNote, boyfriend)
 									end
-									if not handled then
+									if not handled and not currentNote.noAnimation then
 										self:safeAnimate(boyfriend, animToPlay, false, 3)
+									end
+
+									if currentNote.gfNote then
+										self:safeAnimate(girlfriend, curAnim, false, 1)
+									end
+
+									-- Tipo de nota "Hey!": además de la animación normal, dispara
+									-- el mismo efecto que el evento de chart "Hey!" (Note.hx: en
+									-- Psych apunta a "dad", pero en Rewritten el evento "Hey!"
+									-- siempre se mapea a boyfriend/girlfriend, ver charts/psych/events.lua)
+									if currentNote.noteTypeStr == "Hey!" then
+										psychEventDispatcher.trigger({name = "Hey!"})
 									end
 
 									note.hit = true
@@ -1938,8 +2165,16 @@ return {
 							if _G.currentWeek and _G.currentWeek.customNoteHit then
 								handled = _G.currentWeek:customNoteHit(curAnim, note, boyfriend)
 							end
-							if not handled then
+							if not handled and not note.noAnimation then
 								self:safeAnimate(boyfriend, animToPlay, false, 3)
+							end
+
+							if note.gfNote then
+								self:safeAnimate(girlfriend, curAnim, false, 1)
+							end
+
+							if note.noteTypeStr == "Hey!" then
+								psychEventDispatcher.trigger({name = "Hey!"})
 							end
 
 							-- Manejo de grupos de hold
@@ -2774,6 +3009,7 @@ drawUI = function(self)
 			for i = 1, #cameraEvents do cameraEvents[i] = nil end
 			for i = #cameraEvents, 1, -1 do cameraEvents[i] = nil end
 		end
+		psychEvents = {}
 		if spriteTimers then
 			for i = 1, #spriteTimers do spriteTimers[i] = nil end
 			-- Importante: mantener la tabla, solo vaciarla

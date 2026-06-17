@@ -1,0 +1,21 @@
+{
+	"songs": [
+		["Spaghetti", "yunjin", [223, 47, 136], "spaghetti"]
+	],
+
+	"weekCharacters": ["yunjin", "bf", "gf"],
+	"weekBackground": "stage",
+
+	"weekName": "Sserafim",
+	"storyName": "Le Sserafim",
+	"weekBefore": "",
+	"startUnlocked": true,
+	"hideStoryMode": false,
+	"hideFreeplay": false,
+	"mod": false,
+
+	"color": [223, 47, 136],
+	"prop": "spaghetti",
+	"title": "sserafim",
+	"funnyText": "LE SSERAFIM"
+}

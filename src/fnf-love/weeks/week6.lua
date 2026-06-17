@@ -123,11 +123,11 @@ return {
 
 		-- Cargar las notas correspondientes
 		if song == 3 then
-			weeks:generateNotes(love.filesystem.load("charts/week6/thorns" .. difficulty .. ".lua")())
+			weeks:loadChart("charts/week6/thorns" .. difficulty)
 		elseif song == 2 then
-			weeks:generateNotes(love.filesystem.load("charts/week6/roses" .. difficulty .. ".lua")())
+			weeks:loadChart("charts/week6/roses" .. difficulty)
 		else
-			weeks:generateNotes(love.filesystem.load("charts/week6/senpai" .. difficulty .. ".lua")())
+			weeks:loadChart("charts/week6/senpai" .. difficulty)
 		end
 	end,
 

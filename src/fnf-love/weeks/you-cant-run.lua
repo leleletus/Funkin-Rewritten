@@ -481,7 +481,7 @@ return {
 
     initUI = function(self)
         weeks:initUI()
-        weeks:generateNotes(love.filesystem.load("charts/you-cant-run/you-cant-run-hard.lua")())
+        weeks:loadChart("charts/you-cant-run/you-cant-run-hard")
     end,
 
     scheduleNextStatic = function(self)

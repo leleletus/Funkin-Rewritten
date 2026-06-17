@@ -1,0 +1,27 @@
+{
+	"songs": [
+		["Bopeebo",   "dad", [146, 113, 253], "bopeebo"],
+		["Fresh",     "dad", [146, 113, 253], "fresh"],
+		["Dad Battle","dad", [146, 113, 253], "dad-battle"]
+	],
+
+	"weekCharacters": [
+		"dad",
+		"bf",
+		"gf"
+	],
+	"weekBackground": "stage",
+
+	"weekName": "Week 1",
+	"storyName": "Daddy Dearest",
+	"weekBefore": "tutorial",
+	"startUnlocked": true,
+	"hideStoryMode": false,
+	"hideFreeplay": false,
+	"mod": false,
+
+	"color": [146, 113, 253],
+	"prop": "Menu_Dad",
+	"title": "week1",
+	"funnyText": "DADDY DEAREST"
+}

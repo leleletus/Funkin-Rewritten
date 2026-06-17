@@ -121,9 +121,10 @@ function pause:update(dt)
             if inst then inst:stop() end
             if voices then voices:stop() end
             if self.pauseMusic then self.pauseMusic:stop() end -- Apagar música de pausa
-            
+
             Gamestate.pop()
             _G.storyMode = false
+            _G.chartEditorPreviewSong = nil
             Gamestate.switch(menu)
         end
     end

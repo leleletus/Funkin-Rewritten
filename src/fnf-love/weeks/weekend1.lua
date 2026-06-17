@@ -1145,13 +1145,13 @@ return {
 		weeks:initUI()
 
 		if song == 4 then
-			weeks:generateNotes(love.filesystem.load("charts/weekend1/blazin" .. difficulty .. ".lua")())
+			weeks:loadChart("charts/weekend1/blazin" .. difficulty)
 		elseif song == 3 then
-			weeks:generateNotes(love.filesystem.load("charts/weekend1/2hot" .. difficulty .. ".lua")())
+			weeks:loadChart("charts/weekend1/2hot" .. difficulty)
 		elseif song == 2 then
-			weeks:generateNotes(love.filesystem.load("charts/weekend1/lit-up" .. difficulty .. ".lua")())
+			weeks:loadChart("charts/weekend1/lit-up" .. difficulty)
 		else
-			weeks:generateNotes(love.filesystem.load("charts/weekend1/darnell" .. difficulty .. ".lua")())
+			weeks:loadChart("charts/weekend1/darnell" .. difficulty)
 		end
 
 		-- Cargar eventos de FocusCamera/ZoomCamera propios de Weekend 1

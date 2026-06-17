@@ -19,7 +19,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 local highscores = require("highscores")
 
-local data = require("data")
+local wmd        = require("modules.weekMetadata")
+local psychChars = require("charts.psych.characters")
 local freeplay = {}
 
 -- Dependencias
@@ -81,28 +82,20 @@ end
 -- Cargar canciones desde las semanas (solo mods)
 local function loadSongs()
     songs = {}
-    for weekIndex, week in ipairs(data.weeks) do
-        -- Incluir solo si la semana ES mod (mod == true)
-        if week.mod == true then
-            for songIndex, songData in ipairs(week.songs) do
-                local songName, songCharacter, songColor
-                if type(songData) == "string" then
-                    songName = songData
-                    songCharacter = week.character
-                    songColor = week.color
-                else
-                    songName = songData.name
-                    songCharacter = songData.character or week.character
-                    songColor = songData.color or week.color
-                end
-                local fileSafeName = songName:gsub(" ", "-"):lower()
+    for _, week in ipairs(wmd.weeks) do
+        if week.mod and not week.hideFreeplay then
+            for songIndex, song in ipairs(week.songs) do
+                -- songs[i] es un array: [name, character, color, fileName]
+                local name      = song[1]
+                local character = song[2]
+                local color     = song[3] or week.color
                 table.insert(songs, {
-                    name = songName,
-                    fileSafeName = fileSafeName,
-                    weekId = week.id,
-                    songIndex = songIndex,
-                    character = songCharacter,
-                    color = songColor
+                    name         = name,
+                    fileSafeName = name:gsub(" ", "-"):lower(),
+                    weekId       = week.id,
+                    songIndex    = songIndex,
+                    character    = character,
+                    color        = color
                 })
             end
         end
@@ -215,12 +208,15 @@ end
 
 -- Crear un icono usando el sprite de iconos
 local function createIcon(character)
+    local entry = psychChars.get(character)
+    local iconName = (entry and entry.icon) or character
+
     local icon = iconsSprite.create()
-    icon:animate(character, true)
-    -- Determinar escala según si es pixel o no
+    icon:animate(iconName, true)
+    -- Determinar escala según si es pixel o no (comparar contra el nombre de icono)
     local isPixel = false
     for _, pc in ipairs(pixelCharacters) do
-        if pc == character then
+        if pc == iconName then
             isPixel = true
             break
         end
