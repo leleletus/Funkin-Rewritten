@@ -2,10 +2,10 @@
 	"songs": [
 		["Spookeez",  "skid and pump", [213, 126, 0],   "spookeez"],
 		["South",     "skid and pump", [213, 126, 0],   "south"],
-		["Monster",   "monster",       [243, 255, 110],  "monster"]
+		["Monster",   "monster",       [243, 255, 110], "monster"]
 	],
 
-	"weekCharacters": ["skid and pump", "bf", "gf"],
+	"weekCharacters": ["spooky", "bf", "gf"],
 	"weekBackground": "spooky",
 
 	"weekName": "Week 2",

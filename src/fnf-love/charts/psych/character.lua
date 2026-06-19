@@ -15,15 +15,32 @@ local M = {}
 local atlasCache = {}
 
 -- imagePath: ruta relativa a images/png/ sin extensión (p.ej. "characters/BOYFRIEND")
+--
+-- Replica Paths.getAtlas() de Psych real: decide Sparrow XML vs "packer" por
+-- EXISTENCIA de archivo, nunca por contenido -- si existe <key>.xml es
+-- Sparrow (siempre, sin excepción); si no existe pero hay <key>.txt, es
+-- packer (caso de characters/spirit.txt). Antes esto se adivinaba leyendo el
+-- contenido del archivo, lo cual era frágil y llegó a clasificar mal atlas
+-- Sparrow válidos.
 local function loadAtlas(imagePath)
 	if atlasCache[imagePath] then return atlasCache[imagePath] end
 
 	local pngPath = graphics.imagePath(imagePath)
 	local xmlPath = pngPath:gsub("%.png$", ".xml")
+	local txtPath = pngPath:gsub("%.png$", ".txt")
+
+	local frames
+	if love.filesystem.getInfo(xmlPath) then
+		frames = atlas.loadSparrow(xmlPath)
+	elseif love.filesystem.getInfo(txtPath) then
+		frames = atlas.loadPacker(txtPath)
+	else
+		error("no se encontró atlas (.xml ni .txt) para '" .. imagePath .. "'")
+	end
 
 	local entry = {
 		image = love.graphics.newImage(pngPath),
-		frames = atlas.load(xmlPath),
+		frames = frames,
 	}
 
 	atlasCache[imagePath] = entry
@@ -60,32 +77,23 @@ local function frameByExactName(frames, name)
 	return nil
 end
 
--- Diferencia entre la fórmula de Flixel y la de modules/graphics.lua para la
--- posición en pantalla de la esquina superior-izquierda del frame recortado
--- ("trim"), a escala 1 sin rotación/flip:
---   Flixel (Psych):  x + frameX - psychOffset
---   graphics.lua:    x - (oxBase + animOffset), con oxBase = floor(frameWidth/2) + frameX
--- (o floor(width/2) + 0 si el frame no tiene recorte, frameWidth == 0).
--- Igualando ambas: animOffset = psychOffset - oxBase - frameX, es decir
--- psychOffset + correctionDelta(frame), con:
---   correctionDelta(frame) = -floor(frameWidth/2) - 2*frameX
---
--- correctionDelta depende SOLO del frame (no del offset de Psych), y varía
--- de una animación a otra según el tamaño/recorte de su primer frame. Por eso
--- M.load no la aplica directo: se usa la DIFERENCIA entre correctionDelta de
--- cada animación y la de la animación inicial, de forma que la posición base
--- del personaje (la que ya usa characters.lua) no cambie y solo se corrijan
--- los desplazamientos RELATIVOS entre animaciones.
-local function correctionDelta(frame)
-	local frameWidth, frameX = frame.width, 0
-	local frameHeight, frameY = frame.height, 0
-
-	if frame.frameWidth ~= 0 then frameWidth, frameX = frame.frameWidth, frame.frameX end
-	if frame.frameHeight ~= 0 then frameHeight, frameY = frame.frameHeight, frame.frameY end
-
-	return -math.floor(frameWidth / 2) - 2 * frameX,
-		-math.floor(frameHeight / 2) - 2 * frameY
-end
+-- NOTA: en rondas anteriores existió acá un sistema de "correctionDelta" que
+-- intentaba compensar a mano diferencias de tamaño de canvas entre
+-- animaciones (pensado para Spirit, cuyo "singDOWN" usa un canvas de 256x256
+-- frente a 128x128 del resto). Se sacó por completo: terminaba aplicando una
+-- corrección espuria al offset de CASI TODOS los personajes (cualquiera cuyas
+-- animaciones de canto tuvieran un canvas recortado distinto al de "idle" --
+-- el caso normal, no la excepción). Character.hx real es mucho más simple --
+-- playAnim() hace literalmente:
+--   var daOffset = animOffsets.get(AnimName);
+--   offset.set(daOffset[0], daOffset[1]);
+-- es decir, el offset crudo del JSON se aplica DIRECTO, sin ningún ajuste
+-- basado en el recorte/tamaño del frame. M.load() ahora hace exactamente
+-- eso (ver animData[...].offsetX/Y abajo). Si algún personaje puntual con
+-- animaciones de tamaño de canvas muy distinto entre sí (como Spirit) queda
+-- descolocado en una animación específica, se corrige a mano con el editor
+-- de personajes (states/character-offset-debug.lua) -- igual que en Psych
+-- real, donde esos valores los ajusta a mano quien crea el personaje.
 
 -- jsonPath: ruta a characters/<id>.json
 -- isPlayer: true si el personaje ocupa el slot "boyfriend" (afecta flip_x)
@@ -145,7 +153,6 @@ function M.load(jsonPath, isPlayer)
 				speed = animDef.fps or 24,
 				offsetX = offsets[1] or 0,
 				offsetY = offsets[2] or 0,
-				anchorFrame = selected[1],
 			})
 
 			if not firstAnim then firstAnim = internalName end
@@ -164,31 +171,36 @@ function M.load(jsonPath, isPlayer)
 
 	local initialAnim = hasAnim["idle"] and "idle" or hasAnim["danceRight"] and "danceRight" or firstAnim
 
-	-- Ancla la corrección a la animación inicial: su corrección relativa es
-	-- 0, así que su offset final queda igual al de Psych (y por tanto la
-	-- posición base del personaje, definida por characters.lua, no cambia).
-	local anchorCorrectionX, anchorCorrectionY = 0, 0
-	for _, anim in ipairs(pending) do
-		if anim.internalName == initialAnim then
-			anchorCorrectionX, anchorCorrectionY = correctionDelta(anim.anchorFrame)
-			break
-		end
-	end
-
+	-- offsetX/Y = el valor CRUDO de "offsets" del JSON, sin ningún ajuste --
+	-- igual que Character.hx:playAnim() (offset.set(daOffset[0], daOffset[1])).
 	local animData = {}
 	for _, anim in ipairs(pending) do
-		local dx, dy = correctionDelta(anim.anchorFrame)
-
 		animData[anim.internalName] = {
 			start = anim.start,
 			stop = anim.stop,
 			speed = anim.speed,
-			offsetX = anim.offsetX + (dx - anchorCorrectionX),
-			offsetY = anim.offsetY + (dy - anchorCorrectionY),
+			offsetX = anim.offsetX,
+			offsetY = anim.offsetY,
 		}
 	end
 
-	local sprite = graphics.newSprite(sheet.image, frameData, animData, initialAnim, false)
+	-- Alias "idle" para personajes que solo tienen danceLeft/danceRight (p.ej.
+	-- Skid and Pump), igual que Character.hx hace al reproducir la animación
+	-- inicial cuando no existe "idle".
+	if not animData["idle"] then
+		animData["idle"] = animData["danceRight"] or animData["danceLeft"]
+	end
+
+	-- fixedPivot: ver comentario en modules/graphics.lua:newSprite() -- evita
+	-- que el personaje se desplace visualmente al cambiar de animación
+	-- cuando el canvas sin recortar de esa animación difiere del de "idle"
+	-- (caso normal, no la excepción). characters.lua ancla la posición base
+	-- al mismo frame inicial, así que ambos quedan consistentes entre sí.
+	local sprite = graphics.newSprite(sheet.image, frameData, animData, initialAnim, false, { fixedPivot = true })
+
+	if def.no_antialiasing then
+		sheet.image:setFilter("nearest", "nearest")
+	end
 
 	local scale = def.scale or 1
 	sprite.sizeX = scale

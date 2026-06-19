@@ -89,6 +89,7 @@ function pause:update(dt)
 
             -- Usar LoadingState para que el restart no congele la pantalla
             local LS = require("states.loadingState")
+            local weekLoader = require("modules.weekLoader")
             local tasks = {
                 {
                     name = "Limpiando canción...",
@@ -100,6 +101,32 @@ function pause:update(dt)
                     name = "Recargando...",
                     fn = function()
                         collectgarbage("step", 300)
+                    end
+                },
+                -- Restart NO pasa por weekLoader.loadWeek() (usa su propia
+                -- lista de tareas), así que boyfriend/girlfriend/enemy nunca
+                -- se recargan -- sin esto, weeks:load() crashea indexando
+                -- "enemy" (nil) porque enter() nunca corrió Task 4.
+                {
+                    name = "Cargando personajes...",
+                    fn = function()
+                        if _G.currentWeekId then
+                            weekLoader.loadCharactersForSong(_G.currentWeekId, sIndex, sAppend)
+                        end
+
+                        -- loadCharactersForSong() reconstruye boyfriend/girlfriend/
+                        -- enemy desde cero, pero characters.lua:loadInto() los
+                        -- posiciona "recuperando" el slot del sprite SALIENTE
+                        -- (pensado para "Change Character" a mitad de canción).
+                        -- Re-aplicar el stage actual fuerza la posición absoluta
+                        -- real (stages/data/<id>.json), sin depender de ese
+                        -- cálculo intermedio -- la siguiente llamada a
+                        -- stage.load() en enter() ya lo haría de nuevo, pero
+                        -- hacerlo también acá es inocuo (idempotente) y evita
+                        -- cualquier desfase visible en el primer frame.
+                        local psychStages = require("charts.psych.stages")
+                        local curStageId = psychStages.getCurrentId()
+                        if curStageId then psychStages.apply(curStageId) end
                     end
                 },
                 {

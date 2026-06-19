@@ -5,7 +5,7 @@
 		["Winter Horrorland",  "monster",     [243, 255, 110], "winter-horrorland"]
 	],
 
-	"weekCharacters": ["mom-car", "bf", "gf"],
+	"weekCharacters": ["parents-christmas", "bf", "gf"],
 	"weekBackground": "mall",
 
 	"weekName": "Week 5",

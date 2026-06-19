@@ -17,9 +17,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ------------------------------------------------------------------------------]]
 
-local json         = require("lib.json")
-local psychChars   = require("charts.psych.characters")
-local stage        = require("stages.stage.stage")
+local json  = require("lib.json")
+local stage = require("stages.stage.stage")
 
 local weekJSON = json.decode(love.filesystem.read("weeks/week1.json"))
 local song, difficulty
@@ -73,16 +72,7 @@ return {
 	loadStage = function(self, songNum, songAppend)
 		song       = songNum
 		difficulty = songAppend
-
-		-- En Psych Engine los personajes se cargan desde SONG.player1/player2/gfVersion
-		-- (chart JSON). Aquí usamos weekCharacters como aproximación hasta implementar
-		-- la carga post-chart.
-		local chars = weekJSON.weekCharacters
-		psychChars.loadInto("enemy",      chars[1])  -- "dad"
-		psychChars.loadInto("boyfriend",  chars[2])  -- "bf"
-		psychChars.loadInto("girlfriend", chars[3])  -- "gf"
-		enemyIcon:animate("daddy dearest", false)
-
+		-- Personajes ya cargados por weekLoader (player1/player2/gfVersion del chart).
 		stage.load()
 	end,
 

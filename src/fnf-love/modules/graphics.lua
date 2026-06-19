@@ -36,6 +36,29 @@ return {
 		return screenHeight
 	end,
 
+	-- Aplica la transformación de cámara para una capa de fondo con el
+	-- scrollFactor `sf` indicado (igual que Flixel: 1 = misma velocidad que
+	-- los personajes, <1 = más lento/lejano, >1 = más rápido/cercano), y la
+	-- ancla siempre al CENTRO de pantalla sin importar `sf`.
+	--
+	-- Si solo se hiciera `translate(w*sf, h*sf)` antes de escalar, cada capa
+	-- haría zoom alrededor de un punto distinto (w*sf, h*sf) en vez del
+	-- centro real -- con sf bajo (fondos lejanos) el zoom de cada beat las
+	-- hace "derivar" de forma visible relativo a los personajes. Con este
+	-- pivote, sf solo afecta el paneo (cam.x/y), nunca el centro del zoom,
+	-- y la posición de reposo (cam=0, zoom=1) no cambia: sigue siendo
+	-- exactamente w*sf + sprite.x, igual que antes.
+	--
+	-- Llamar a love.graphics.pop() para cerrar, igual que con push() normal.
+	pushParallax = function(sfX, sfY)
+		sfY = sfY or sfX
+		local w, h = screenWidth / 2, screenHeight / 2
+		love.graphics.push()
+		love.graphics.translate(w, h)
+		love.graphics.scale(cam.sizeX, cam.sizeY)
+		love.graphics.translate(w * (sfX - 1) + cam.x * sfX, h * (sfY - 1) + cam.y * sfY)
+	end,
+
 	imagePath = function(path)
 		local pathStr = "images/" .. imageType .. "/" .. path .. "." .. imageType
 
@@ -124,6 +147,30 @@ return {
 			offsetX = nil,
 			offsetY = nil
 		}
+
+		-- Pivote FIJO opt-in (options.fixedPivot): SOLO lo usan los
+		-- personajes (charts/psych/character.lua), nadie mas -- el
+		-- comportamiento por defecto del modulo sigue intacto para los
+		-- otros 160+ usos de newSprite (notas, menus, alfabeto, iconos,
+		-- etc.) -- esos tienen frames con y sin recorte real mezclados en
+		-- la MISMA animacion, asi que cualquier heuristica basada en
+		-- "tiene recorte real" para distinguir personajes del resto les
+		-- rompia el dibujado igual.
+		--
+		-- Anclado POR ANIMACION (no global a "idle"): se recalcula cada
+		-- vez que animate() arranca una animacion nueva, usando el
+		-- PRIMER frame de ESA animacion como referencia (ver animate()
+		-- mas abajo). Para el primer frame de cualquier animacion esto
+		-- da EXACTAMENTE el mismo resultado que el calculo original (sin
+		-- pivote fijo) -- que es lo que Psych ya tiene tuneado en
+		-- "offsets" -- y solo evita el bamboleo entre frames DENTRO de
+		-- esa misma animacion. Un ancla GLOBAL (siempre "idle") se probo
+		-- antes y rompia personajes cuyo canvas varia MUCHO entre
+		-- animaciones (Pico: idle 453px de ancho vs singDOWN 736px) --
+		-- mezclar el canvas de "idle" con el offset tuneado para
+		-- "singDOWN" no tiene sentido si Psych asumio el canvas de la
+		-- propia animacion al tunear ese offset.
+		local referenceOx, referenceOy = 0, 0
 
 		local isAnimated
 		local isLooped
@@ -221,6 +268,34 @@ return {
 				return #frameData
 			end,
 
+			-- Origen (ox, oy) que draw() usaría para el frame dado (por defecto
+			-- el frame inicial de la animación actual). Representa el punto del
+			-- frame trimado que coincide con self.x/self.y en pantalla — es decir,
+			-- el centro del bounding box SIN trim (igual que Flixel calcula el
+			-- offset de frame). Útil para convertir coordenadas Psych Engine
+			-- (top-left del bounding box sin trim) a las de FNF Rewritten
+			-- (centro del bounding box sin trim): rewritten = psych + (ox, oy).
+			getOrigin = function(self, frameIndex)
+				local f = frameData[frameIndex or anim.start or 1]
+				if not f then return 0, 0 end
+
+				local ox, oy
+
+				if f.offsetWidth == 0 then
+					ox = math.floor(f.width / 2)
+				else
+					ox = math.floor(f.offsetWidth / 2) + f.offsetX
+				end
+
+				if f.offsetHeight == 0 then
+					oy = math.floor(f.height / 2)
+				else
+					oy = math.floor(f.offsetHeight / 2) + f.offsetY
+				end
+
+				return ox, oy
+			end,
+
 			setOptions = function(self, optionsTable)
 				options = optionsTable
 			end,
@@ -269,6 +344,48 @@ return {
 						if frameData[flooredFrame].offsetHeight ~= 0 then
 							height = frameData[flooredFrame].offsetY
 						end
+					elseif options and options.fixedPivot then
+						-- Pivote fijo (frame ancla de la animación inicial) +
+						-- recorte del frame ACTUAL -- solo personajes
+						-- (character.lua pasa fixedPivot=true).
+						--
+						-- X e Y se tratan INDEPENDIENTES: un personaje puede
+						-- tener sizeX<0 (flip_x) sin que sizeY lo esté (caso
+						-- normal -- nadie en este juego espeja verticalmente).
+						--
+						-- Rama SIN espejar (por eje): confirmada buena. NO
+						-- tocar sin probar en el juego real.
+						--
+						-- Rama ESPEJADA (por eje, ej. sizeX<0 -- Pico,
+						-- Tankman): FlxFrame.hx real NO espeja simplemente
+						-- invirtiendo la escala -- aplica, por cada frame
+						-- individual: mat.scale(-1,1); mat.translate(w,0);
+						-- con w = sourceSize.x = el ANCHO DEL CANVAS de ESE
+						-- frame (nuestro offsetWidth, o width si no hay
+						-- recorte real). Esto reemplaza el "+offsetX" de la
+						-- rama sin espejar por "+ canvas + offsetX - pivote
+						-- fijo" -- un término que SOLO existe al espejar, y
+						-- que antes faltaba por completo (de ahí que el error
+						-- creciera con el ancho del canvas del frame actual:
+						-- catastrófico en frames muy anchos como "Pico Down
+						-- Note", canvas de 736px).
+						if self.sizeX and self.sizeX < 0 then
+							local canvasW = frameData[flooredFrame].offsetWidth == 0 and frameData[flooredFrame].width or frameData[flooredFrame].offsetWidth
+							width = canvasW + frameData[flooredFrame].offsetX - referenceOx
+						elseif frameData[flooredFrame].offsetWidth == 0 then
+							width = referenceOx
+						else
+							width = referenceOx + frameData[flooredFrame].offsetX
+						end
+
+						if self.sizeY and self.sizeY < 0 then
+							local canvasH = frameData[flooredFrame].offsetHeight == 0 and frameData[flooredFrame].height or frameData[flooredFrame].offsetHeight
+							height = canvasH + frameData[flooredFrame].offsetY - referenceOy
+						elseif frameData[flooredFrame].offsetHeight == 0 then
+							height = referenceOy
+						else
+							height = referenceOy + frameData[flooredFrame].offsetY
+						end
 					else
 						if frameData[flooredFrame].offsetWidth == 0 then
 							width = math.floor(frameData[flooredFrame].width / 2)
@@ -282,6 +399,40 @@ return {
 						end
 					end
 
+					-- anim.offsetX/Y (el campo "offsets" de Psych, ej. characters/*.json)
+					-- y self.offsetX/Y (usado por el editor de offsets) representan un
+					-- ajuste manual en píxeles "crudos" de Psych -- NO deben escalarse
+					-- por sizeX/Y. Pero love.graphics.draw() recibe ox,oy como
+					-- parámetros DENTRO del espacio local del quad, que LÖVE escala
+					-- automáticamente por sx,sy al dibujar -- así que sin dividir antes,
+					-- cualquier offset terminaba multiplicado por la escala del
+					-- personaje. Para personajes normales (escala 1) esto era invisible;
+					-- para personajes pixel (escala 6) cualquier offset quedaba 6x más
+					-- grande de lo que debía -- catastrófico para personajes con offsets
+					-- grandes (Spirit: -218,-280 -> desplazamiento real de -1308,-1680px),
+					-- y una causa de descolocación más sutil para el resto (Senpai,
+					-- BF-pixel, GF-pixel) con offsets más chicos.
+					-- División con SIGNO (no abs): el ajuste manual ("offsets" de
+					-- Psych) debe verse igual sin importar si el personaje está
+					-- espejado (flip_x) -- es un nudge en píxeles de pantalla
+					-- que quien armó el JSON ajustó mirando el personaje YA
+					-- espejado (ej. Pico, Tankman: flip_x=true siempre como
+					-- enemigo). Si se usara abs() acá, el término quedaría
+					-- multiplicado por sign(sizeX) en el dibujado final
+					-- (love.graphics.draw multiplica ox por sx con signo), o
+					-- sea que CUALQUIER personaje espejado tendría el ajuste
+					-- de cada animación aplicado en la dirección contraria --
+					-- exactamente el bug reportado para Pico/Tankman (offsets
+					-- mal SOLO en los personajes con la X flippeada). Dividir
+					-- por sizeX con signo cancela la escala Y el signo,
+					-- dejando el ajuste como un desplazamiento de
+					-- pantalla fijo, igual en cualquier escala/orientación --
+					-- que es justo lo que se busca: Spirit (escala 6, sin
+					-- flip) sigue funcionando igual que antes (con sizeX
+					-- positivo, abs(sizeX) y sizeX dan lo mismo).
+					local offsetScaleX = self.sizeX ~= 0 and self.sizeX or 1
+					local offsetScaleY = self.sizeY ~= 0 and self.sizeY or 1
+
 					love.graphics.draw(
 						sheet,
 						frames[flooredFrame],
@@ -290,8 +441,8 @@ return {
 						self.orientation,
 						self.sizeX,
 						self.sizeY,
-						width + anim.offsetX + self.offsetX,
-						height + anim.offsetY + self.offsetY,
+						width + anim.offsetX / offsetScaleX + self.offsetX / offsetScaleX,
+						height + anim.offsetY / offsetScaleY + self.offsetY / offsetScaleY,
 						self.shearX,
 						self.shearY
 					)
@@ -316,6 +467,18 @@ return {
 		end
 
 		object:animate(animName, loopAnim)
+
+		-- Fija el pivote de referencia UNA SOLA VEZ (global al sprite, no
+		-- por animación), usando el frame ancla de la animación INICIAL
+		-- (anim.start recién establecido por animate() arriba). Nunca se
+		-- recalcula después.
+		if optionsTable and optionsTable.fixedPivot then
+			local anchorFrame = frameData[anim.start]
+			if anchorFrame then
+				referenceOx = anchorFrame.offsetWidth == 0 and math.floor(anchorFrame.width / 2) or math.floor(anchorFrame.offsetWidth / 2)
+				referenceOy = anchorFrame.offsetHeight == 0 and math.floor(anchorFrame.height / 2) or math.floor(anchorFrame.offsetHeight / 2)
+			end
+		end
 
 		options = optionsTable
 

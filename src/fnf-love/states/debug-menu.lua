@@ -217,7 +217,7 @@ return {
                 {
                     {"Chart Editor", function() Gamestate.switch(require("states.chart-editor")) end},
                     {"Note Offset Debug", function() Gamestate.switch(require("states.note-offset-debug")) end},
-                    {"Character Offset Debug", function() Gamestate.switch(require("states.character-offset-debug")) end},
+                    {"Character Editor", function() Gamestate.switch(require("states.character-offset-debug")) end},
                     {"Stage Editor", function() Gamestate.switch(require("states.stage-editor")) end},
                     {"Results: PERFECT",   function() testResults("PERFECT")   end},
                     {"Results: EXCELLENT", function() testResults("EXCELLENT") end},

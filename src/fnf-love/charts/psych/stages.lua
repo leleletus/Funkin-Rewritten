@@ -1,67 +1,100 @@
--- Registro de stages Psych Engine (campo "stage" del chart) -> posiciones
--- nativas de boyfriend/girlfriend/enemy en FNF Rewritten.
+-- Aplica posiciones de stage (formato Psych Engine, stages/data/<id>.json) a
+-- boyfriend/girlfriend/enemy, igual que PlayState.hx hace con
+-- stageData.boyfriend/girlfriend/opponent.
 --
--- No reemplaza fondos/gráficos del stage (eso requeriría portar el arte y la
--- lógica de cada `weeks/weekN.lua`, fuera de alcance) — solo reposiciona a
--- los tres personajes para que un personaje "trasplantado" desde otro chart
--- no aparezca en un lugar absurdo. Si el nombre de stage no se reconoce, se
--- avisa por consola y se dejan las posiciones tal cual están.
+-- Fórmula (verificada exacta contra los valores ya correctos de Week 1):
+--   sprite.x = stageJSON.slot.x + sprite._slotConversionX + sprite._charOffsetX
+--   sprite.y = stageJSON.slot.y + sprite._slotConversionY + sprite._charOffsetY
+-- Donde _slotConversionX/Y convierte el sistema de coordenadas de Psych
+-- (top-left del bounding box sin trim) al de FNF Rewritten (centro del
+-- bounding box sin trim) -- ver modules/graphics.lua:getOrigin() -- y
+-- _charOffsetX/Y es el offset propio del personaje ("position" en su JSON).
+-- Ambos los calcula y guarda charts/psych/characters.lua:loadInto().
+--
+-- Por diseño, M.apply() es una función PURA de reposicionamiento: asignación
+-- absoluta (nunca acumulativa), no toca animaciones ni recarga nada. Llamarla
+-- dos veces seguidas con el mismo id da exactamente el mismo resultado.
+
+local stagedata = require("charts.psych.stagedata")
 
 local M = {}
 
--- Posiciones en el sistema de coordenadas de FNF Rewritten (NO coordenadas
--- de Psych Engine). Para personajes "psych" (bf/gf/dad) = REGISTRY.x/y +
--- JSON.position; para personajes "legacy" = REGISTRY.x/y directamente.
--- Estas posiciones son las que psychCharacters.loadInto ya produce, así que
--- apply() es un no-op para la semana nativa y solo reposiciona cuando hay un
--- personaje "trasplantado" de otra semana.
-local STAGES = {
-	-- bf=(974,636)  gf=(749,440)  dad=(308,483)
-	stage             = { boyfriend = {x = 974, y = 636},  girlfriend = {x = 749, y = 440},  enemy = {x = 308, y = 483} },  -- week1
-	-- bf=(974,636)  gf=(749,440)  spooky=(-610,140)
-	spooky            = { boyfriend = {x = 974, y = 636},  girlfriend = {x = 749, y = 440},  enemy = {x = -610, y = 140} }, -- week2
-	-- bf=(974,636)  gf=(749,440)  pico=(-480,50)
-	philly            = { boyfriend = {x = 974, y = 636},  girlfriend = {x = 749, y = 440},  enemy = {x = -480, y = 50} },  -- week3
-	["phillyChristmas"] = { boyfriend = {x = 974, y = 636}, girlfriend = {x = 749, y = 440}, enemy = {x = -480, y = 50} },  -- week3 navideña
-	-- bf=(974,636)  gf-car hereda (749,440)  mom=(-380,-10)
-	limo              = { boyfriend = {x = 974, y = 636},  girlfriend = {x = 749, y = 440},  enemy = {x = -380, y = -10} }, -- week4
-	-- bf=(974,636)  gf-christmas hereda (749,440)  monster-christmas=(-780,410)
-	mall              = { boyfriend = {x = 974, y = 636},  girlfriend = {x = 749, y = 440},  enemy = {x = -780, y = 410} }, -- week5
-	["mallEvil"]      = { boyfriend = {x = 974, y = 636},  girlfriend = {x = 749, y = 440},  enemy = {x = -780, y = 410} }, -- week5 variante
-	-- bf=(974,636)  gf-tankman=(-635,-105)  tankman=(-810,90)
-	tank              = { boyfriend = {x = 974, y = 636},  girlfriend = {x = -635, y = -105}, enemy = {x = -810, y = 90} }, -- week7
-}
+local currentStageId
 
--- name: nombre Psych del stage (meta.stage / "Change Character" no lo usa).
--- Devuelve el layout {boyfriend=, girlfriend=, enemy=}, o nil + warn.
-function M.get(name)
-	if not name then return nil end
+-- id: nombre del stage (stages/data/<id>.json). Devuelve la tabla de datos
+-- del stage, o nil + warn si no existe.
+function M.get(id)
+	if not id then return nil end
 
-	local entry = STAGES[name]
-	if not entry then
-		print("WARN: stage Psych '" .. tostring(name) .. "' sin layout definido en FNF Rewritten, se mantienen las posiciones actuales")
+	local data = stagedata.load(id)
+	if not data then
+		print("WARN: stage Psych '" .. tostring(id) .. "' sin datos definidos en FNF Rewritten, se mantienen las posiciones actuales")
 	end
 
-	return entry
+	return data
 end
 
--- Aplica las posiciones del stage a los sprites globales actuales
--- (boyfriend/girlfriend/enemy), sin tocar fondos. Devuelve true si se aplicó.
-function M.apply(name)
-	local entry = M.get(name)
-	if not entry then return false end
+-- Id del último stage aplicado con M.apply() (p.ej. "school", "mallEvil").
+-- Usado por states/weeks.lua para leer camera_boyfriend/camera_opponent/
+-- camera_girlfriend del stage activo sin acoplarse a cada stages/*/stage.lua.
+function M.getCurrentId()
+	return currentStageId
+end
 
-	for slot, pos in pairs(entry) do
+-- Datos completos (tabla de stagedata.lua) del stage activo, o nil si
+-- ninguno se aplicó todavía o el id no existe.
+function M.getCurrentData()
+	if not currentStageId then return nil end
+	return stagedata.load(currentStageId)
+end
+
+-- Reposiciona boyfriend/girlfriend/enemy según el stage indicado, y aplica
+-- su defaultZoom (igual que PlayState.hx hace `FlxG.camera.zoom =
+-- defaultCamZoom = stageData.defaultZoom` al cargar el stage -- antes cada
+-- weekN.lua tenía que leerlo y aplicarlo a mano, y la mayoría ni lo hacía,
+-- corriendo con zoom=1 en vez del real). Idempotente: no acumula sobre la
+-- posición/zoom anterior, ni toca nada más.
+function M.apply(id)
+	local data = M.get(id)
+	if not data then return false end
+
+	currentStageId = id
+
+	local slots = {
+		boyfriend  = data.boyfriend,
+		girlfriend = data.girlfriend,
+		enemy      = data.opponent,
+	}
+
+	for slot, pos in pairs(slots) do
 		local sprite = _G[slot]
-		if sprite then
-			sprite.x, sprite.y = pos.x, pos.y
+		if sprite and pos then
+			sprite.x = pos[1] + (sprite._slotConversionX or 0) + (sprite._charOffsetX or 0)
+			sprite.y = pos[2] + (sprite._slotConversionY or 0) + (sprite._charOffsetY or 0)
 		end
+	end
+
+	if _G.girlfriend then
+		_G.girlfriend.visible = not data.hide_girlfriend
+	end
+
+	if _G.camScale then
+		camScale.x, camScale.y = data.defaultZoom, data.defaultZoom
+	end
+	if _G.cam then
+		cam.sizeX, cam.sizeY = data.defaultZoom, data.defaultZoom
 	end
 
 	return true
 end
 
--- Expuesto para el editor de charts (selector de stages).
+-- Expuesto para el editor de charts (selector de stages): lista de ids
+-- derivada de los archivos reales en stages/data/, no hardcodeada.
+local STAGES = {}
+for _, file in ipairs(love.filesystem.getDirectoryItems("stages/data")) do
+	local id = file:match("^(.+)%.json$")
+	if id then STAGES[id] = true end
+end
 M.STAGES = STAGES
 
 return M

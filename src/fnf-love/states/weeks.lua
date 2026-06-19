@@ -158,29 +158,82 @@ camZoomBump = {x = 0, y = 0}
 
 cameraEvents = {}
 
--- Replica moveCamera(false) de Psych (PlayState.hx): camFollow.x -=
--- bf.cameraPosition[0]; camFollow.y += bf.cameraPosition[1] (con
--- camera_boyfriend del stage = [0,0]). cam = -camFollow + cte, así que
--- cam.x += camPos.x, cam.y -= camPos.y.
-local function bfCamTarget()
-	local p = boyfriend.psychChar and boyfriend.psychChar.camera_position or {0, 0}
-	return -boyfriend.x + 100 + (p[1] or 0), -boyfriend.y + 75 - (p[2] or 0)
+-- Offset de cámara propio del stage activo (camera_boyfriend/camera_opponent/
+-- camera_girlfriend de stages/data/<id>.json -- boyfriendCameraOffset/
+-- opponentCameraOffset/girlfriendCameraOffset en PlayState.hx). Antes estaba
+-- hardcodeado en [0,0]; varios stages reales (limo, mall, school, schoolEvil)
+-- tienen valores distintos de cero.
+local function stageCamOffset(field)
+	local data = psychStages.getCurrentData()
+	local p = data and data[field]
+	return (p and p[1]) or 0, (p and p[2]) or 0
 end
 
--- Replica moveCamera(true) de Psych: camFollow += dad.cameraPosition (con
--- camera_opponent del stage = [0,0]). cam = -camFollow + cte, así que
--- cam.x -= camPos.x, cam.y -= camPos.y.
+-- Replica moveCamera(false) de Psych (PlayState.hx):
+--   camFollow.x = bf.midpoint.x - 100 - bf.cameraPosition[0] + boyfriendCameraOffset[0]
+--   camFollow.y = bf.midpoint.y - 100 + bf.cameraPosition[1] + boyfriendCameraOffset[1]
+-- cam = -camFollow + CONST (CONST_X=0, CONST_Y=-25, derivados calibrando
+-- contra los valores ya correctos de Week 1, donde boyfriendCameraOffset=0):
+--   cam.x = -bf.x + 100 + cameraPosition[0] - stageOffset[0]
+--   cam.y = -bf.y + 75  - cameraPosition[1] - stageOffset[1]
+-- camera_position es un valor "crudo" de Psych, en la misma unidad que el
+-- arte SIN escalar -- igual que anim.offsetX/Y (ver modules/graphics.lua),
+-- NO debe usarse directo si el personaje tiene scale != 1. Para personajes
+-- normales (scale=1, bf/dad/etc.) esto no cambia nada; para personajes pixel
+-- (scale=6, semana 6) usarlo sin dividir amplificaba camera_position 6x,
+-- lo cual era invisible para bf/dad/pico (camera_position=[0,0]) pero
+-- catastrófico para Senpai ([-240,-330] sin dividir desplazaba la cámara
+-- ~400px fuera de pantalla cuando debía enfocarlo).
+local function bfCamTarget()
+	local p = boyfriend.psychChar and boyfriend.psychChar.camera_position or {0, 0}
+	local sx, sy = stageCamOffset("camera_boyfriend")
+	local scaleX = math.abs(boyfriend.sizeX or 1)
+	local scaleY = math.abs(boyfriend.sizeY or 1)
+	return -boyfriend.x + 100 + (p[1] or 0) / scaleX - sx, -boyfriend.y + 75 - (p[2] or 0) / scaleY - sy
+end
+
+-- Replica moveCamera(true) de Psych:
+--   camFollow.x = dad.midpoint.x + 150 + dad.cameraPosition[0] + opponentCameraOffset[0]
+--   camFollow.y = dad.midpoint.y - 100 + dad.cameraPosition[1] + opponentCameraOffset[1]
+-- cam = -camFollow + CONST (mismas CONST_X/Y que arriba):
+--   cam.x = -dad.x - 150 - cameraPosition[0] - stageOffset[0]
+--   cam.y = -dad.y + 75  - cameraPosition[1] - stageOffset[1]
 local function enemyCamTarget()
 	local p = enemy.psychChar and enemy.psychChar.camera_position or {0, 0}
-	return -enemy.x - 100 - (p[1] or 0), -enemy.y + 75 - (p[2] or 0)
+	local sx, sy = stageCamOffset("camera_opponent")
+	local scaleX = math.abs(enemy.sizeX or 1)
+	local scaleY = math.abs(enemy.sizeY or 1)
+	return -enemy.x - 150 - (p[1] or 0) / scaleX - sx, -enemy.y + 75 - (p[2] or 0) / scaleY - sy
 end
 
 gfDanceBeats = gfDanceBeats or 2  -- cada cuántos beats baila girlfriend ("Set GF Speed" de Psych)
 local psychEvents = {}  -- eventos de chart Psych pendientes, ordenados por tiempo
 local spriteTimers = {}
-local gfDanceLeft = false  -- alterna danceLeft/danceRight para personajes Psych (gf, etc.)
+local gfDanceLeft = false        -- alterna danceLeft/danceRight para girlfriend
+local enemyDanceLeft = false     -- idem para enemy (p.ej. Skid and Pump, sin "idle" propio)
+local boyfriendDanceLeft = false -- idem para boyfriend (personajes Psych sin "idle", p.ej. pico-player)
 misses = 0
 customGirlfriendIdle = customGirlfriendIdle or false
+
+-- Character.hx dance(): si el personaje no tiene "idle" pero sí
+-- danceLeft/danceRight, alterna entre ambos cada vez que se le pide
+-- "bailar" (igual que GF) en vez de quedarse congelado en una sola pose.
+local function danceOrIdle(sprite, wasLeft)
+	local anims = sprite:getAnims()
+	if anims["danceLeft"] and anims["danceRight"] then
+		local left = not wasLeft
+		sprite:animate(left and "danceLeft" or "danceRight", false)
+		return left
+	elseif anims["idle"] then
+		sprite:animate("idle", false)
+		return wasLeft
+	else
+		-- Sin "idle" ni danceLeft/danceRight (p.ej. un personaje especial
+		-- a mitad de una animación propia, como pico-speaker disparando):
+		-- no tocar nada en vez de spamear un WARN inútil cada beat.
+		return wasLeft
+	end
+end
 
 -- Variables para el evento Highlight
 local highlightActive = false
@@ -1464,7 +1517,7 @@ return {
 					-- volvería a 0 al acabar, causando que musicTime salte hacia atrás.
 					local seconds = inst and inst:tell("seconds") or 0
 
-					musicTime = musicTime + (time * 1000) - previousFrameTime
+					musicTime = musicTime + (time * 1000) - (previousFrameTime or time * 1000)
 					previousFrameTime = time * 1000
 
 					if inst and inst:isPlaying() and lastReportedPlaytime ~= seconds * 1000 then
@@ -1477,7 +1530,7 @@ return {
             absMusicTime = math.abs(musicTime)
             musicThres = math.floor(absMusicTime / 100)
 
-            for i = 1, #events do
+            for i = 1, #(events or {}) do
                 if events[i].eventTime <= absMusicTime then
                     local oldBpm = bpm
 
@@ -1619,9 +1672,16 @@ return {
 			camZoomBump.x = camZoomBump.x * zoomDecay
 			camZoomBump.y = camZoomBump.y * zoomDecay
 
-			-- Aplicar el pulso y el empuje de zoom a la cámara
-			cam.sizeX = (camScale.x + camZoomBump.x) * beatPulse
-			cam.sizeY = (camScale.y + camZoomBump.y) * beatPulse
+			-- Aplicar el pulso y el empuje de zoom a la cámara -- gateado por
+			-- disableAutoCam igual que el tween de posición: sin esto, una
+			-- cutscene que anima cam.sizeX/Y a mano (p.ej. la scary intro de
+			-- Winter Horrorland) queda compitiendo cada frame contra este
+			-- pulso, que además sigue calculándose con el bpm/absMusicTime
+			-- de la canción ANTERIOR (la nueva todavía no cargó su chart).
+			if not _G.disableAutoCam then
+				cam.sizeX = (camScale.x + camZoomBump.x) * beatPulse
+				cam.sizeY = (camScale.y + camZoomBump.y) * beatPulse
+			end
 
 			-- Mantener el tween de cámara activo cada frame para que siempre apunte
 			-- al personaje correcto (necesario cuando los personajes cambian de posición,
@@ -1629,13 +1689,13 @@ return {
 			-- El cancel+recreate cada frame es intencional: garantiza seguimiento inmediato.
 			if not _G.disableAutoCam and not highlightActive then
 				if camTimer then Timer.cancel(camTimer) end
+				local tx, ty
 				if currentMustHit then
-					local tx, ty = bfCamTarget()
-					camTimer = Timer.tween(1.25, cam, {x = tx, y = ty}, "out-quad")
+					tx, ty = bfCamTarget()
 				else
-					local tx, ty = enemyCamTarget()
-					camTimer = Timer.tween(1.25, cam, {x = tx, y = ty}, "out-quad")
+					tx, ty = enemyCamTarget()
 				end
+				camTimer = Timer.tween(1.25, cam, {x = tx, y = ty}, "out-quad")
 			end
 
             girlfriend:update(dt)
@@ -1674,25 +1734,41 @@ return {
 			if musicThres ~= oldMusicThres and math.fmod(absMusicTime, (60000 / bpm) * gfDanceBeats) < 100 then
 				if not customGirlfriendIdle then
 					if spriteTimers[1] == 0 then
-						-- No interrumpir "sad" si aún está animándose
+						-- No interrumpir "sad" (Mom) ni "hairBlow"/"hairFall"
+						-- (Philly, tren pasando) si aún están animándose --
+						-- mismo patrón que "scared" para enemy/boyfriend más
+						-- abajo (lightning strike de Spooky).
 						local gfAnim = girlfriend:getAnimName()
-						if not (gfAnim == "sad" and girlfriend:isAnimated()) then
+						local gfSpecial = gfAnim == "sad" or gfAnim == "hairBlow" or gfAnim == "hairFall"
+						if not (gfSpecial and girlfriend:isAnimated()) then
 							local gfAnims = girlfriend:getAnims()
 							if gfAnims["danceLeft"] and gfAnims["danceRight"] then
 								gfDanceLeft = not gfDanceLeft
 								girlfriend:animate(gfDanceLeft and "danceLeft" or "danceRight", false)
-							else
+							elseif gfAnims["idle"] then
 								girlfriend:animate("idle", false)
 								girlfriend:setAnimSpeed(14.4 / (60 / bpm))
 							end
+							-- Si no tiene "idle" ni danceLeft/danceRight (p.ej.
+							-- pico-speaker, que solo tiene shoot*/shoot*-loop),
+							-- no tocar nada: no hay con qué "bailar" y forzar
+							-- setAnimSpeed encima de su animación real (el loop
+							-- de disparo) la dejaría sonando/jugando a velocidad
+							-- equivocada.
 						end
 					end
 				end
 				if spriteTimers[2] == 0 then
-					self:safeAnimate(enemy, "idle", false, 2)
+					local enemyAnim = enemy:getAnimName()
+					if not (enemyAnim == "scared" and enemy:isAnimated()) then
+						enemyDanceLeft = danceOrIdle(enemy, enemyDanceLeft)
+					end
 				end
 				if spriteTimers[3] == 0 then
-					self:safeAnimate(boyfriend, "idle", false, 3)
+					local bfAnim = boyfriend:getAnimName()
+					if not (bfAnim == "scared" and boyfriend:isAnimated()) then
+						boyfriendDanceLeft = danceOrIdle(boyfriend, boyfriendDanceLeft)
+					end
 				end
 			end
 
@@ -1794,10 +1870,12 @@ return {
 						self:safeAnimate(girlfriend, curAnim, false, 1)
 					end
 
-					-- Tipo de nota "Hey!" en una nota del oponente: igual efecto
-					-- que el evento de chart "Hey!" (ver charts/psych/events.lua).
-					if enemyNote[1].noteTypeStr == "Hey!" then
-						psychEventDispatcher.trigger({name = "Hey!"})
+					-- Tipo de nota "Hey!" en una nota del oponente: el propio
+					-- oponente reacciona con su animación "hey" (PlayState.hx
+					-- opponentNoteHit) -- distinto del evento de chart "Hey!",
+					-- que es un mecanismo aparte y siempre afecta a bf/gf.
+					if enemyNote[1].noteTypeStr == "Hey!" and enemy:getAnims()["hey"] then
+						enemy:animate("hey", false)
 					end
 
 					table.remove(enemyNote, 1)
@@ -1915,12 +1993,11 @@ return {
 										self:safeAnimate(girlfriend, curAnim, false, 1)
 									end
 
-									-- Tipo de nota "Hey!": además de la animación normal, dispara
-									-- el mismo efecto que el evento de chart "Hey!" (Note.hx: en
-									-- Psych apunta a "dad", pero en Rewritten el evento "Hey!"
-									-- siempre se mapea a boyfriend/girlfriend, ver charts/psych/events.lua)
-									if currentNote.noteTypeStr == "Hey!" then
-										psychEventDispatcher.trigger({name = "Hey!"})
+									-- Tipo de nota "Hey!": el propio boyfriend reacciona con su
+									-- animación "hey" (PlayState.hx noteHit) -- distinto del
+									-- evento de chart "Hey!", que es un mecanismo aparte.
+									if currentNote.noteTypeStr == "Hey!" and boyfriend:getAnims()["hey"] then
+										boyfriend:animate("hey", false)
 									end
 
 									note.hit = true
@@ -2173,8 +2250,8 @@ return {
 								self:safeAnimate(girlfriend, curAnim, false, 1)
 							end
 
-							if note.noteTypeStr == "Hey!" then
-								psychEventDispatcher.trigger({name = "Hey!"})
+							if note.noteTypeStr == "Hey!" and boyfriend:getAnims()["hey"] then
+								boyfriend:animate("hey", false)
 							end
 
 							-- Manejo de grupos de hold

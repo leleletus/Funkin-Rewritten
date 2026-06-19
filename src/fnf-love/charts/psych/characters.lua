@@ -26,36 +26,51 @@ local M = {}
 -- los campos "boyfriend"/"girlfriend"/"opponent". El personaje solo conoce su
 -- propio offset fino (campo "position" en characters/<id>.json).
 local REGISTRY = {
-	bf             = { kind = "psych", json = "characters/bf.json",  slot = "boyfriend", icon = "boyfriend" },
-	["bf-christmas"] = { path = "sprites/week4/boyfriend.lua",   slot = "boyfriend", icon = "boyfriend" },
-	["bf-pixel"]   = { path = "sprites/boyfriend.lua",           slot = "boyfriend", icon = "boyfriend (pixel)" },
+	-- ── Boyfriend ─────────────────────────────────────────────────────────────
+	bf               = { kind = "psych", json = "characters/bf.json",             slot = "boyfriend",  icon = "boyfriend" },
+	["bf-holding-gf"]= { kind = "psych", json = "characters/bf-holding-gf.json",  slot = "boyfriend",  icon = "boyfriend" },
+	["bf-car"]       = { kind = "psych", json = "characters/bf-car.json",         slot = "boyfriend",  icon = "boyfriend" },
+	["bf-christmas"] = { kind = "psych", json = "characters/bf-christmas.json",   slot = "boyfriend",  icon = "boyfriend" },
+	["bf-pixel"]     = { kind = "psych", json = "characters/bf-pixel.json",       slot = "boyfriend",  icon = "boyfriend (pixel)" },
 
-	gf             = { kind = "psych", json = "characters/gf.json",  slot = "girlfriend", icon = "girlfriend" },
-	["gf-christmas"] = { path = "sprites/week4/girlfriend.lua",  slot = "girlfriend", icon = "girlfriend" },
-	["gf-car"]     = { path = "sprites/week4/limo-dancer.lua",   slot = "girlfriend", icon = "girlfriend" },
-	["gf-pixel"]   = { path = "sprites/girlfriend.lua",          slot = "girlfriend", icon = "girlfriend" },
-	["gf-tankman"] = { path = "sprites/week7/gftankmen.lua",     slot = "girlfriend", icon = "girlfriend" },
+	-- ── Girlfriend ────────────────────────────────────────────────────────────
+	gf               = { kind = "psych", json = "characters/gf.json",             slot = "girlfriend", icon = "girlfriend" },
+	["gf-christmas"] = { kind = "psych", json = "characters/gf-christmas.json",   slot = "girlfriend", icon = "girlfriend" },
+	["gf-car"]       = { kind = "psych", json = "characters/gf-car.json",         slot = "girlfriend", icon = "girlfriend" },
+	["gf-pixel"]     = { kind = "psych", json = "characters/gf-pixel.json",       slot = "girlfriend", icon = "girlfriend" },
+	["gf-tankmen"]   = { kind = "psych", json = "characters/gf-tankmen.json",     slot = "girlfriend", icon = "girlfriend" },
 
-	dad            = { kind = "psych", json = "characters/dad.json", slot = "enemy", icon = "daddy dearest" },
+	-- ── Week 1 ────────────────────────────────────────────────────────────────
+	dad              = { kind = "psych", json = "characters/dad.json",            slot = "enemy",      icon = "daddy dearest" },
 
-	spooky         = { path = "sprites/week2/monster.lua",       slot = "enemy", icon = "monster" },
-	monster        = { path = "sprites/week2/monster.lua",       slot = "enemy", icon = "monster" },
-	["monster-christmas"] = { path = "sprites/week5/monster.lua", slot = "enemy", icon = "monster" },
+	-- ── Week 2 (Spooky Month) ─────────────────────────────────────────────────
+	spooky           = { kind = "psych", json = "characters/spooky.json",         slot = "enemy",      icon = "skid and pump" },
+	["skid and pump"]= { kind = "psych", json = "characters/spooky.json",         slot = "enemy",      icon = "skid and pump" },
+	monster          = { kind = "psych", json = "characters/monster.json",        slot = "enemy",      icon = "monster" },
+	["monster-christmas"] = { kind = "psych", json = "characters/monster-christmas.json", slot = "enemy", icon = "monster" },
 
-	pico           = { path = "sprites/week3/pico-enemy.lua",    slot = "enemy", icon = "pico" },
+	-- ── Week 3 (Pico) ─────────────────────────────────────────────────────────
+	pico             = { kind = "psych", json = "characters/pico.json",           slot = "enemy",      icon = "pico" },
 
-	mom            = { path = "sprites/week4/mommy-mearest.lua", slot = "enemy", icon = "mommy mearest" },
-	["mom-car"]    = { path = "sprites/week4/mommy-mearest.lua", slot = "enemy", icon = "mommy mearest" },
-	["parents-christmas"] = { path = "sprites/week5/dearest-duo.lua", slot = "enemy", icon = "dearest duo" },
+	-- ── Week 4 (Mommy Must Murder) ────────────────────────────────────────────
+	mom              = { kind = "psych", json = "characters/mom.json",            slot = "enemy",      icon = "mommy mearest" },
+	["mom-car"]      = { kind = "psych", json = "characters/mom-car.json",        slot = "enemy",      icon = "mommy mearest" },
 
-	senpai         = { path = "sprites/week6/senpai.lua",        slot = "enemy", icon = "senpai" },
-	["senpai-angry"] = { path = "sprites/week6/senpai-angry.lua", slot = "enemy", icon = "senpai-angry" },
-	spirit         = { path = "sprites/week6/spirit.lua",        slot = "enemy", icon = "spirit" },
+	-- ── Week 5 (Red Snow) ─────────────────────────────────────────────────────
+	["parents-christmas"] = { kind = "psych", json = "characters/parents-christmas.json", slot = "enemy", icon = "dearest duo" },
 
-	tankman        = { path = "sprites/week7/tankman.lua",       slot = "enemy", icon = "tankman" },
+	-- ── Week 6 (Hating Simulator) ─────────────────────────────────────────────
+	senpai           = { kind = "psych", json = "characters/senpai.json",         slot = "enemy",      icon = "senpai" },
+	["senpai-angry"] = { kind = "psych", json = "characters/senpai-angry.json",   slot = "enemy",      icon = "senpai-angry" },
+	spirit           = { kind = "psych", json = "characters/spirit.json",         slot = "enemy",      icon = "spirit" },
 
-	darnell        = { path = "sprites/weekend1/darnell.lua",    slot = "enemy", icon = "darnell" },
-	nene           = { path = "sprites/weekend1/Nene.lua",       slot = "enemy" },
+	-- ── Week 7 (Tankman) ──────────────────────────────────────────────────────
+	tankman          = { kind = "psych", json = "characters/tankman.json",        slot = "enemy",      icon = "tankman" },
+	["pico-speaker"] = { kind = "psych", json = "characters/pico-speaker.json",   slot = "girlfriend", icon = "pico" },
+
+	-- ── Weekend 1 ─────────────────────────────────────────────────────────────
+	darnell          = { path = "sprites/weekend1/darnell.lua",                   slot = "enemy",      icon = "darnell" },
+	nene             = { path = "sprites/weekend1/Nene.lua",                      slot = "enemy" },
 }
 
 -- name: nombre Psych (player1/player2/gfVersion, o value1 de "Change Character")
@@ -100,30 +115,12 @@ function M.loadInto(slot, name)
 	local current = _G[slot]
 
 	-- El offset propio del personaje (startCharacterPos / "position" en Psych Engine).
-	-- La posición de slot del stage la suma el stage.lua DESPUÉS de loadInto,
+	-- La posición de slot del stage la suma stages.lua DESPUÉS de loadInto,
 	-- igual que Psych Engine: stageData.boyfriend + charOffset = posición final.
 	local posX, posY = 0, 0
 	if sprite.psychChar and sprite.psychChar.position then
 		posX = sprite.psychChar.position[1] or 0
 		posY = sprite.psychChar.position[2] or 0
-	end
-
-	-- Guardamos el offset propio para que "Change Character" pueda recuperar
-	-- la posición de slot del sprite anterior: slotX = current.x - current._charOffsetX
-	sprite._charOffsetX = posX
-	sprite._charOffsetY = posY
-
-	if current then
-		-- Change Character mid-song: recuperar slot del personaje saliente y reusar.
-		local slotX = (current.x or 0) - (current._charOffsetX or 0)
-		local slotY = (current.y or 0) - (current._charOffsetY or 0)
-		sprite.x = slotX + posX
-		sprite.y = slotY + posY
-	else
-		-- Primera carga: solo el offset del personaje.
-		-- El stage.lua sumará el slot en su M.load().
-		sprite.x = posX
-		sprite.y = posY
 	end
 
 	if entry.kind ~= "psych" and current then
@@ -133,6 +130,54 @@ function M.loadInto(slot, name)
 
 	if sprite:getAnims()["idle"] then
 		sprite:animate("idle", false)
+	end
+
+	-- Conversión Psych (top-left del bounding box sin trim) -> FNF Rewritten
+	-- (centro del bounding box sin trim) -- nunca adivinada a mano, ver
+	-- modules/graphics.lua:getOrigin(). Sin argumento: usa el frame de la
+	-- animación ACTUALMENTE activa (graphics.lua: frameIndex or anim.start),
+	-- que justo tras construir el sprite es la animación inicial
+	-- (character.lua elige "idle" si existe, sino "danceRight", sino la
+	-- primera con frames válidos -- "idle" casi nunca es la primera listada
+	-- en el JSON, así que usar literalmente el frame 1 del JSON daba una
+	-- conversión distinta a la real y descolocaba personajes como dad/gf/
+	-- spooky donde "idle"/"danceRight" no es la primera animación listada).
+	-- getOrigin() devuelve el origen SIN escalar (no multiplica por
+	-- sprite.sizeX/Y). Esto es CORRECTO acá, sin multiplicar por la escala:
+	-- modules/graphics.lua:draw() pasa exactamente este mismo valor SIN
+	-- escalar como ox/oy a love.graphics.draw(), que internamente lo escala
+	-- por sx,sy al dibujar -- es decir, sprite.x/y YA representa el centro
+	-- visual del frame ESCALADO, precisamente PORQUE el origen que se le
+	-- resta en el dibujado está sin escalar (LÖVE hace esa multiplicación
+	-- una sola vez, automáticamente). Si acá TAMBIÉN multiplicáramos por la
+	-- escala, el centro quedaría desplazado por un factor extra de `scale`
+	-- (para personajes pixel, escala 6 -- exactamente el bug de "personajes
+	-- hundidos en el suelo" reportado: la ronda pasada multipliqué por
+	-- error, pensando que esta conversión necesitaba escalar igual que
+	-- charts/psych/bgsprite.lua -- pero bgsprite.lua SÍ multiplica porque ahí
+	-- el origen se suma directo a x,y sin pasar por un draw() que ya escale
+	-- automáticamente; characters.lua no tiene esa segunda escalada).
+	local slotConvX, slotConvY = sprite:getOrigin()
+	sprite._slotConversionX = slotConvX
+	sprite._slotConversionY = slotConvY
+
+	-- Guardamos el offset propio para que "Change Character" pueda recuperar
+	-- la posición de slot Psych del sprite anterior:
+	-- slotPsychX = current.x - current._slotConversionX - current._charOffsetX
+	sprite._charOffsetX = posX
+	sprite._charOffsetY = posY
+
+	if current then
+		-- Change Character mid-song: recuperar slot Psych del personaje saliente y reusar.
+		local slotX = (current.x or 0) - (current._slotConversionX or 0) - (current._charOffsetX or 0)
+		local slotY = (current.y or 0) - (current._slotConversionY or 0) - (current._charOffsetY or 0)
+		sprite.x = slotX + slotConvX + posX
+		sprite.y = slotY + slotConvY + posY
+	else
+		-- Primera carga: solo el offset del personaje + conversión de coordenadas.
+		-- stages.lua sumará el slot Psych real en su M.apply().
+		sprite.x = slotConvX + posX
+		sprite.y = slotConvY + posY
 	end
 
 	_G[slot] = sprite

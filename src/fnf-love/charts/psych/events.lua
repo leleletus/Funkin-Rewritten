@@ -56,6 +56,10 @@ local propertyMap = {
 	["cam.zoom"]   = function(v) camScale.x, camScale.y = coerce(v), coerce(v) end,
 	["camScale.x"] = function(v) camScale.x = coerce(v) end,
 	["camScale.y"] = function(v) camScale.y = coerce(v) end,
+	-- defaultCamZoom es el nombre real de la propiedad pública de PlayState.hx
+	-- (el zoom "en reposo" al que la cámara vuelve) -- camScale es exactamente
+	-- ese concepto en este puerto.
+	defaultCamZoom = function(v) camScale.x, camScale.y = coerce(v), coerce(v) end,
 	disableAutoCam = function(v) _G.disableAutoCam = coerce(v) and true or false end,
 }
 
@@ -63,11 +67,23 @@ local propertyMap = {
 
 local handlers = {}
 
+-- PlayState.hx triggerEvent 'Hey!': value1 decide quién reacciona.
+-- "bf"/"boyfriend"/"0" -> solo bf; "gf"/"girlfriend"/"1" -> solo gf;
+-- cualquier otro valor (incluido vacío) -> ambos.
 handlers["Hey!"] = function(ev)
-	weeks:safeAnimate(boyfriend, "hey", false, TIMER_ID.boyfriend)
+	local who = tostring(ev.value1 or ""):lower():match("^%s*(.-)%s*$")
+	local value = 2
+	if who == "bf" or who == "boyfriend" or who == "0" then
+		value = 0
+	elseif who == "gf" or who == "girlfriend" or who == "1" then
+		value = 1
+	end
 
-	if girlfriend.anims and girlfriend.anims["cheer"] then
+	if value ~= 0 and girlfriend and girlfriend.anims and girlfriend.anims["cheer"] then
 		weeks:safeAnimate(girlfriend, "cheer", false, TIMER_ID.girlfriend)
+	end
+	if value ~= 1 then
+		weeks:safeAnimate(boyfriend, "hey", false, TIMER_ID.boyfriend)
 	end
 end
 

@@ -12,7 +12,34 @@ local converter = require("charts.psych.converter")
 
 local M = {}
 
--- basePath: ruta sin extensión, p.ej. "charts/week1/bopeebo-hard"
+-- Lee <directorio del chart>/events.json (hermano, igual que Psych Engine
+-- separa notas y eventos en archivos distintos). SIEMPRE devuelve una tabla
+-- (posiblemente vacía) — nunca nil, para que el resto del pipeline pueda
+-- iterarla con ipairs sin chequeo de nil en cada call site.
+local function loadSiblingEvents(basePath)
+	local dir = basePath:match("^(.*/)") or ""
+	local eventsPath = dir .. "events.json"
+
+	if not love.filesystem.getInfo(eventsPath) then
+		return {}
+	end
+
+	local raw = love.filesystem.read(eventsPath)
+	if not raw then
+		return {}
+	end
+
+	local ok, decoded = pcall(json.decode, raw)
+	if not ok or not decoded then
+		print("WARN: events.json inválido '" .. eventsPath .. "': " .. tostring(decoded))
+		return {}
+	end
+
+	local eventsData = decoded.song or decoded
+	return eventsData.events or {}
+end
+
+-- basePath: ruta sin extensión, p.ej. "data/bopeebo/bopeebo-hard"
 -- Devuelve chart, meta si existe basePath..".json"; si no, nil.
 function M.load(basePath)
 	local jsonPath = basePath .. ".json"
@@ -34,6 +61,12 @@ function M.load(basePath)
 	end
 
 	local songData = decoded.song or decoded
+
+	-- Si el chart no trae eventos embebidos (formato moderno de Psych, donde
+	-- viven en events.json aparte), buscarlos en el archivo hermano.
+	if not songData.events or #songData.events == 0 then
+		songData.events = loadSiblingEvents(basePath)
+	end
 
 	local okConvert, chart, meta = pcall(converter.convertSong, songData)
 	if not okConvert then

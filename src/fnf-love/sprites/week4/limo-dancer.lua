@@ -53,8 +53,10 @@ return graphics.newSprite(
 		{x = 264, y = 824, width = 254, height = 361, offsetX = -139, offsetY = -49, offsetWidth = 517, offsetHeight = 410} -- 30: bg dancer sketch PINK0029
 	},
 	{
-		["anim"] = {start = 1, stop = 30, speed = 24, offsetX = 0, offsetY = 0}
+		-- BackgroundDancer.hx: indices [0..14]=danceLeft, [15..29]=danceRight
+		["danceLeft"]  = {start = 1,  stop = 15, speed = 24, offsetX = 0, offsetY = 0},
+		["danceRight"] = {start = 16, stop = 30, speed = 24, offsetX = 0, offsetY = 0}
 	},
-	"anim",
+	"danceLeft",
 	false
 )

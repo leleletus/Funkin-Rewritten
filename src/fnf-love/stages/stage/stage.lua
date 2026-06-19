@@ -13,6 +13,7 @@ destroy()     → M.leave()
 local M = {}
 
 local psychEvents = require("charts.psych.events")
+local psychStages = require("charts.psych.stages")
 
 local stageBack, stageFront, stageLightL, stageLightR, curtains
 
@@ -49,12 +50,10 @@ function M.load()
     curtains.sizeX, curtains.sizeY = 0.9, 0.9
 
     -- ── Posiciones de personajes ──────────────────────────────────────────────
-    -- Equivalente al stage.json de Psych Engine (campos boyfriend/girlfriend/opponent).
-    -- loadInto() ya aplicó el offset propio de cada personaje (psychChar.position);
-    -- aquí sumamos la posición de slot del escenario encima de ese offset.
-    boyfriend.x = 974 + boyfriend.x ;  boyfriend.y = 286 + boyfriend.y
-    girlfriend.x = 749 + girlfriend.x;  girlfriend.y = 440 + girlfriend.y
-    enemy.x      = 308 + enemy.x     ;  enemy.y      = 483 + enemy.y
+    -- stages/data/stage.json (boyfriend/girlfriend/opponent), igual que el
+    -- resto de stages -- antes tenía constantes hardcodeadas (974/749/308)
+    -- que habían quedado desactualizadas.
+    psychStages.apply("stage")
 
     -- ── Dadbattle Spotlight ───────────────────────────────────────────────────
     dadbattleVisible = false
@@ -129,14 +128,8 @@ function M.update(dt)
 end
 
 function M.draw()
-    local w, h = graphics.getWidth() / 2, graphics.getHeight() / 2
-
     -- Fondo — scrollFactor 0.9 (stageback, stagefront, stage_light en StageWeek1.hx)
-    love.graphics.push()
-        love.graphics.translate(w * 0.9, h * 0.9)
-        love.graphics.scale(cam.sizeX, cam.sizeY)
-        love.graphics.translate(cam.x * 0.9, cam.y * 0.9)
-
+    graphics.pushParallax(0.9)
         stageBack:draw()
         stageFront:draw()
         stageLightL:draw()
@@ -144,37 +137,26 @@ function M.draw()
     love.graphics.pop()
 
     -- Personajes — scrollFactor 1 (valor por defecto de FlxSprite en Flixel)
-    love.graphics.push()
-        love.graphics.translate(w, h)
-        love.graphics.scale(cam.sizeX, cam.sizeY)
+    graphics.pushParallax(1)
+        -- Niebla del Dadbattle Spotlight (DadBattleFog.hx), detrás de los personajes
+        if dadbattleFogAlpha.value > 0.001 then
+            love.graphics.setBlendMode("add")
+            love.graphics.setColor(1, 1, 1, dadbattleFogAlpha.value)
+            dadbattleSmoke1:draw()
+            dadbattleSmoke2:draw()
+            love.graphics.setBlendMode("alpha")
+            love.graphics.setColor(1, 1, 1, 1)
+        end
 
-        love.graphics.push()
-            love.graphics.translate(cam.x, cam.y)
-
-            -- Niebla del Dadbattle Spotlight (DadBattleFog.hx), detrás de los personajes
-            if dadbattleFogAlpha.value > 0.001 then
-                love.graphics.setBlendMode("add")
-                love.graphics.setColor(1, 1, 1, dadbattleFogAlpha.value)
-                dadbattleSmoke1:draw()
-                dadbattleSmoke2:draw()
-                love.graphics.setBlendMode("alpha")
-                love.graphics.setColor(1, 1, 1, 1)
-            end
-
-            girlfriend:draw()
-            enemy:draw()
-            boyfriend:draw()
-        love.graphics.pop()
+        if girlfriend then girlfriend:draw() end
+        if enemy      then enemy:draw()      end
+        if boyfriend  then boyfriend:draw()  end
 
         weeks:drawRating()
     love.graphics.pop()
 
     -- Cortinas — scrollFactor 1.3 (stagecurtains en StageWeek1.hx)
-    love.graphics.push()
-        love.graphics.translate(w * 1.3, h * 1.3)
-        love.graphics.scale(cam.sizeX, cam.sizeY)
-        love.graphics.translate(cam.x * 1.3, cam.y * 1.3)
-
+    graphics.pushParallax(1.3)
         curtains:draw()
     love.graphics.pop()
 
@@ -187,11 +169,7 @@ function M.draw()
 
     -- Foco del spotlight (dadbattleLight, scrollFactor 1, blend ADD)
     if dadbattleLight.visible then
-        love.graphics.push()
-            love.graphics.translate(w, h)
-            love.graphics.scale(cam.sizeX, cam.sizeY)
-            love.graphics.translate(cam.x, cam.y)
-
+        graphics.pushParallax(1)
             love.graphics.setBlendMode("add")
             love.graphics.setColor(1, 1, 1, dadbattleLight.alpha)
             dadbattleLight:draw()

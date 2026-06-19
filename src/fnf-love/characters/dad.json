@@ -2,7 +2,7 @@
 	"animations": [
 		{
 			"offsets": [
-				1,
+				-9,
 				10
 			],
 			"loop": false,
@@ -13,8 +13,8 @@
 		},
 		{
 			"offsets": [
-				10,
-				-40
+				0,
+				-30
 			],
 			"loop": false,
 			"anim": "singDOWN",
@@ -24,7 +24,7 @@
 		},
 		{
 			"offsets": [
-				4,
+				-6,
 				50
 			],
 			"loop": false,
@@ -35,8 +35,8 @@
 		},
 		{
 			"offsets": [
-				10,
-				25
+				0,
+				27
 			],
 			"loop": false,
 			"anim": "singRIGHT",
@@ -73,7 +73,7 @@
 		},
 		{
 			"offsets": [
-				1,
+				-9,
 				10
 			],
 			"loop": true,
@@ -89,7 +89,7 @@
 		},
 		{
 			"offsets": [
-				10,
+				0,
 				27
 			],
 			"loop": true,
@@ -105,8 +105,8 @@
 		},
 		{
 			"offsets": [
-				4,
-				35
+				-6,
+				50
 			],
 			"loop": true,
 			"fps": 24,
