@@ -19,7 +19,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 local highscores = require("highscores")
 
-local data = require("data")
+local wmd        = require("modules.weekMetadata")
+local psychChars = require("charts.psych.characters")
+local json       = require("lib.json")
 local freeplay = {}
 
 -- Dependencias
@@ -81,28 +83,20 @@ end
 -- Cargar canciones desde las semanas (solo NO mods)
 local function loadSongs()
     songs = {}
-    for weekIndex, week in ipairs(data.weeks) do
-        -- Incluir solo si la semana NO es mod (mod ~= true)
-        if week.mod ~= true then
-            for songIndex, songData in ipairs(week.songs) do
-                local songName, songCharacter, songColor
-                if type(songData) == "string" then
-                    songName = songData
-                    songCharacter = week.character
-                    songColor = week.color
-                else
-                    songName = songData.name
-                    songCharacter = songData.character or week.character
-                    songColor = songData.color or week.color
-                end
-                local fileSafeName = songName:gsub(" ", "-"):lower()
+    for _, week in ipairs(wmd.weeks) do
+        if not week.hideFreeplay and not week.mod then
+            for songIndex, song in ipairs(week.songs) do
+                -- songs[i] es un array: [name, character, color, fileName]
+                local name      = song[1]
+                local character = song[2]
+                local color     = song[3] or week.color
                 table.insert(songs, {
-                    name = songName,
-                    fileSafeName = fileSafeName,
-                    weekId = week.id,
-                    songIndex = songIndex,
-                    character = songCharacter,
-                    color = songColor
+                    name         = name,
+                    fileSafeName = name:gsub(" ", "-"):lower(),
+                    weekId       = week.id,
+                    songIndex    = songIndex,
+                    character    = character,
+                    color        = color
                 })
             end
         end
@@ -136,6 +130,17 @@ local function updateTexts()
         score = highscores.getFreeplayScore(keySpace, difficulties[curDifficulty])
     end
     intendedScore = score
+
+    -- BUG real: intendedRating nunca se actualizaba (se quedaba en el 0
+    -- inicial para siempre) -- el score sí se guardaba/cargaba, pero el %
+    -- de precisión de la personal best nunca se leía de vuelta, así que
+    -- siempre mostraba "(0.00%)" sin importar la partida real. Ahora se
+    -- carga igual que el score, con el mismo fallback keyHyphen/keySpace.
+    local rating = highscores.getFreeplayAccuracy(keyHyphen, difficulties[curDifficulty])
+    if rating == 0 then
+        rating = highscores.getFreeplayAccuracy(keySpace, difficulties[curDifficulty])
+    end
+    intendedRating = rating
 
     local ratingPercent = intendedRating * 100
     scoreText.text = "PERSONAL BEST: " .. intendedScore .. " (" .. string.format("%.2f", ratingPercent) .. "%)"
@@ -213,14 +218,34 @@ local function createAlphabet(text, y)
     return obj
 end
 
+-- FASE 2 de la refactorización de ergonomía de modding (ver memoria del
+-- proyecto "modding-ergonomics-refactor"): para un personaje sin entrada en
+-- el REGISTRY (entry.icon ausente), antes de caer al ID crudo (casi nunca
+-- un nombre de ícono válido), se intenta leer su propio
+-- characters/<id>.json -- igual patrón ya usado en weeks.lua/weekLoader.lua/
+-- events.lua para lo mismo. Solo lectura del JSON, sin cargar el sprite
+-- completo (innecesario para un ícono de menú).
+local function readHealthIconFromJson(character)
+    local jsonPath = "characters/" .. character .. ".json"
+    if not love.filesystem.getInfo(jsonPath) then return nil end
+    local ok, data = pcall(function() return json.decode(love.filesystem.read(jsonPath)) end)
+    return (ok and data and data.healthicon) or nil
+end
+
 -- Crear un icono usando el sprite de iconos
 local function createIcon(character)
+    -- "character" es el ID Psych (ej. "dad"); el sprite de iconos usa el nombre
+    -- de animación del REGISTRY (ej. "daddy dearest"). Fallback a healthicon
+    -- del propio JSON, y de ahí al ID crudo.
+    local entry = psychChars.get(character)
+    local iconName = (entry and entry.icon) or readHealthIconFromJson(character) or character
+
     local icon = iconsSprite.create()
-    icon:animate(character, true)
-    -- Determinar escala según si es pixel o no
+    iconsSprite.animate(icon, iconName, true)
+    -- Determinar escala según si es pixel o no (comparar contra el nombre de icono)
     local isPixel = false
     for _, pc in ipairs(pixelCharacters) do
-        if pc == character then
+        if pc == iconName then
             isPixel = true
             break
         end
@@ -461,9 +486,10 @@ function freeplay.update(self, dt)
         else
             -- Iniciar preview de la canción seleccionada
             local song = songs[curSelected]
-            local weekId = song.weekId
-            -- Construir ruta de la instrumental (ej. music/week1/bopeebo-inst.ogg)
-            local instPath = string.format("music/%s/%s-inst.ogg", weekId, song.fileSafeName)  -- usar nombre normalizado
+            -- Construir ruta de la instrumental (ej. music/bopeebo/Inst.ogg --
+            -- una carpeta por canción, igual que Psych Engine real, no por
+            -- semana).
+            local instPath = string.format("music/%s/Inst.ogg", song.fileSafeName)  -- usar nombre normalizado
             
             if love.filesystem.getInfo(instPath) then
                 -- Cancelar cualquier fade previo

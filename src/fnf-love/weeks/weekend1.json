@@ -1,0 +1,25 @@
+{
+	"songs": [
+		["Darnell", "darnell", [115, 94, 176], "darnell"],
+		["Lit Up",  "darnell", [115, 94, 176], "lit-up"],
+		["2Hot",    "darnell", [115, 94, 176], "2hot"],
+		["Blazin'", "darnell", [115, 94, 176], "blazin"]
+	],
+
+	"weekCharacters": ["darnell", "pico-playable", "nene"],
+	"weekBackground": "phillyStreets",
+	"storyMenuBackground": "phillystreets",
+
+	"weekName": "Weekend 1",
+	"storyName": "Pico vs Darnell",
+	"weekBefore": "week7",
+	"startUnlocked": false,
+	"hideStoryMode": false,
+	"hideFreeplay": false,
+	"mod": false,
+
+	"color": [115, 94, 176],
+	"prop": null,
+	"title": "weekend1",
+	"funnyText": "PICO VS DARNELL"
+}

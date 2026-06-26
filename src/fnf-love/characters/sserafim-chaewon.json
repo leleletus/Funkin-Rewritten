@@ -1,0 +1,98 @@
+{
+	"healthbar_colors": [191, 14, 104],
+	"image": "characters/sserafim/chaewon",
+	"position": [
+		0,
+		330
+	],
+	"camera_position": [
+		0,
+		330
+	],
+	"flip_x": false,
+	"healthicon": "chaewon",
+	"animations": [
+		{
+			"anim": "idle",
+			"name": "idle kim",
+			"loop": true,
+			"offsets": [
+				0,
+				0
+			]
+		},
+		{
+			"anim": "singLEFT",
+			"name": "kim left pose",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			]
+		},
+		{
+			"anim": "singDOWN",
+			"name": "kim down pose",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			]
+		},
+		{
+			"anim": "singUP",
+			"name": "kim up pose",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			]
+		},
+		{
+			"anim": "singRIGHT",
+			"name": "kim right pose",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			]
+		},
+		{
+			"anim": "singLEFTmiss",
+			"name": "kim left miss",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			]
+		},
+		{
+			"anim": "singDOWNmiss",
+			"name": "kim miss down",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			]
+		},
+		{
+			"anim": "singUPmiss",
+			"name": "kim miss up",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			]
+		},
+		{
+			"anim": "singRIGHTmiss",
+			"name": "kim right miss",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			]
+		}
+	],
+	"originMode": "feet"
+}

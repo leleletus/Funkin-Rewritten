@@ -18,6 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ------------------------------------------------------------------------------]]
 
 local atlasText = require("modules.atlas_text")
+local weekLoader = require("modules.weekLoader")
 
 local menuID, selection
 local curDir, dirTable
@@ -210,6 +211,24 @@ return {
             Gamestate.switch(resultsState, sd)
         end
 
+        -- Helper: arranca una canción de semana 7 en MODO HISTORIA real
+        -- (mismo camino que storymenu.lua:selectWeek(), vía weekLoader) --
+        -- así dispara la cutscene de intro (Tank.hx ughIntro/gunsIntro/
+        -- stressIntro: stage.startCutscene() solo corre si _G.storyMode es
+        -- true) sin tener que jugar toda la semana desde el principio.
+        local function launchWeek7Story(songIndex, songName)
+            _G.storyMode      = true
+            _G.currentWeekId  = "week7"
+            _G.currentDifficulty = "normal"
+            _G.currentSongName   = songName
+            _G.weekSongs = {"Ugh", "Guns", "Stress"}
+            _G.weekTotalScore  = 0
+            _G.weekTotalSick, _G.weekTotalGood, _G.weekTotalBad, _G.weekTotalShit, _G.weekTotalMissed = 0, 0, 0, 0, 0
+            _G.weekTotalNotesHit, _G.weekTotalPlayed, _G.weekMaxCombo = 0, 0, 0
+            _G.currentSongIndex = songIndex
+            weekLoader.startFromMenu("week7", songIndex, "", true, songName)
+        end
+
         menus = {
             {
                 1,
@@ -217,13 +236,38 @@ return {
                 {
                     {"Chart Editor", function() Gamestate.switch(require("states.chart-editor")) end},
                     {"Note Offset Debug", function() Gamestate.switch(require("states.note-offset-debug")) end},
-                    {"Character Offset Debug", function() Gamestate.switch(require("states.character-offset-debug")) end},
+                    {"Character Editor", function()
+                        local charEditor = require("states.character-offset-debug")
+                        charEditor.setFilter(nil)
+                        Gamestate.switch(charEditor)
+                    end},
+                    {"Sserafim Stage (las 6 juntas, posiciones)", function() Gamestate.switch(require("states.sserafim-stage-debug")) end},
+                    {"Sserafim Characters (offsets por animacion, uno a la vez)", function()
+                        local charEditor = require("states.character-offset-debug")
+                        charEditor.setFilter("sserafim-")
+                        Gamestate.switch(charEditor)
+                    end},
+                    {"Sserafim Cutscene 1a (comiendo hamburguesas)", function()
+                        local cutsceneDebug = require("states.sserafim-cutscene-debug")
+                        cutsceneDebug.setPhase("1a")
+                        Gamestate.switch(cutsceneDebug)
+                    end},
+                    {"Sserafim Cutscene 1b (post-choque, cuenta regresiva)", function()
+                        local cutsceneDebug = require("states.sserafim-cutscene-debug")
+                        cutsceneDebug.setPhase("1b")
+                        Gamestate.switch(cutsceneDebug)
+                    end},
+                    {"Sserafim Lipsync (offset/angulo de la boca por personaje/pose)", function() Gamestate.switch(require("states.sserafim-lipsync-debug")) end},
+                    {"Pico Gun Offset Editor", function() Gamestate.switch(require("states.pico-gun-offset-debug")) end},
                     {"Stage Editor", function() Gamestate.switch(require("states.stage-editor")) end},
                     {"Results: PERFECT",   function() testResults("PERFECT")   end},
                     {"Results: EXCELLENT", function() testResults("EXCELLENT") end},
                     {"Results: GREAT",     function() testResults("GREAT")     end},
                     {"Results: GOOD",      function() testResults("GOOD")      end},
                     {"Results: LOSS",      function() testResults("LOSS")      end},
+                    {"Week 7 Story: Ugh",    function() launchWeek7Story(1, "Ugh")    end},
+                    {"Week 7 Story: Guns",   function() launchWeek7Story(2, "Guns")   end},
+                    {"Week 7 Story: Stress", function() launchWeek7Story(3, "Stress") end},
                     {"Sprite Frame Viewer", function()
                         fvMode     = true
                         menuID     = 2

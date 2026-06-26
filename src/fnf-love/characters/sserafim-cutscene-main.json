@@ -1,0 +1,24 @@
+{
+	"image": "sserafim/cutscene/cutsceneMain",
+	"position": [
+		0,
+		0
+	],
+	"camera_position": [
+		0,
+		0
+	],
+	"flip_x": false,
+	"animations": [
+		{
+			"anim": "play",
+			"name": "cutsceneMain",
+			"indices": [
+				0,
+				630
+			],
+			"loop": true
+		}
+	],
+	"originMode": "topleft"
+}

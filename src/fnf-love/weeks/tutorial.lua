@@ -47,7 +47,7 @@ return {
 	initUI = function(self)
 		weeks:initUI()
 
-		weeks:generateNotes(love.filesystem.load("charts/tutorial/tutorial" .. difficulty .. ".lua")())
+		weeks:loadChart("charts/tutorial/tutorial" .. difficulty)
 	end,
 
 	update = function(self, dt)

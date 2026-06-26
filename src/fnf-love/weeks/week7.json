@@ -1,0 +1,24 @@
+{
+	"songs": [
+		["Ugh",    "tankman", [225, 225, 225], "ugh"],
+		["Guns",   "tankman", [225, 225, 225], "guns"],
+		["Stress", "tankman", [225, 225, 225], "stress"]
+	],
+
+	"weekCharacters": ["tankman", "bf", "gf"],
+	"weekBackground": "military",
+	"storyMenuBackground": "tank",
+
+	"weekName": "Week 7",
+	"storyName": "Tankman",
+	"weekBefore": "week6",
+	"startUnlocked": false,
+	"hideStoryMode": false,
+	"hideFreeplay": false,
+	"mod": false,
+
+	"color": [225, 225, 225],
+	"prop": "Menu_Tankman",
+	"title": "week7",
+	"funnyText": "TANKMAN FT JOHNNYUTAH"
+}

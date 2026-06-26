@@ -56,29 +56,46 @@ function love.load()
 	loadingState = require "states.loadingState"
 	weekLoader = require "modules.weekLoader"
 
-	-- Load week data
-	weekData = {
-		require "weeks.tutorial",
-		require "weeks.week1",
-		require "weeks.week2",
-		require "weeks.week3",
-		require "weeks.week4",
-		require "weeks.week5",
-		require "weeks.week6",
-		require "weeks.week7",
-		require "weeks.weekend1",
-		require "weeks.sserafim",
-		require "weeks.chillador",
-		require "weeks.you-cant-run",
-		require "weeks.sanic",
-		require "weeks.endless"
-	}
+	-- Load week data — driven by weeks/weekList.txt (Psych Engine-style)
+	-- To add a week or mod: create weeks/{id}.json, add id to weekList.txt.
+	-- weeks/{id}.lua is now OPTIONAL (Fase 1 de la refactorización de
+	-- ergonomía de modding, ver memoria del proyecto
+	-- "modding-ergonomics-refactor") -- semanas simples (un stage fijo,
+	-- sin lógica propia) funcionan solo con el JSON, vía
+	-- modules/genericWeek.lua (modules/weekLoader.lua lo usa de
+	-- fallback al cargar de verdad). ESTE loop de acá es solo "calentar
+	-- la caché de require()" -- no tiene ningún consumidor real más allá
+	-- de un comentario en storymenu.lua (confirmado por grep) -- así que
+	-- semanas sin .lua simplemente no entran a este loop, no hay nada
+	-- que cachear para ellas.
+	--
+	-- BUG corregido: el pcall absorbía CUALQUIER error en silencio, sin
+	-- avisar ni la semana ni el motivo -- se mantiene el pcall (sacarlo
+	-- arriesgaría que UNA semana rota tire abajo el arranque del juego
+	-- ENTERO para todos los usuarios, un costo mucho mayor que el
+	-- beneficio de visibilidad) pero ahora se imprime un aviso claro.
+	local wmd = require("modules.weekMetadata")
+	weekData = {}
+	for _, week in ipairs(wmd.weeks) do
+		if love.filesystem.getInfo("weeks/" .. week.id .. ".lua") then
+			local ok, mod = pcall(require, "weeks." .. week.id)
+			if ok then
+				table.insert(weekData, mod)
+			else
+				print("WARN: error al precargar la semana '" .. week.id .. "': " .. tostring(mod))
+			end
+		end
+	end
 
 	-- LÖVE init
 	if curOS == "OS X" then
 		love.window.setIcon(love.image.newImageData("icons/macos.png"))
 	else
 		love.window.setIcon(love.image.newImageData("icons/default.png"))
+	end
+
+	function love.textinput(text)
+		Gamestate.textinput(text)
 	end
 
 	function love.wheelmoved(x, y)
@@ -144,7 +161,12 @@ function love.keypressed(key)
 		love.filesystem.createDirectory("screenshots")
 		love.graphics.captureScreenshot("screenshots/" .. os.time() .. ".png")
 	elseif key == "7" then
-		Gamestate.switch(debugMenu)
+		if _G.chartEditorReturn then
+			_G.chartEditorReturn = nil
+			Gamestate.switch(require("states.chart-editor"))
+		else
+			Gamestate.switch(debugMenu)
+		end
 --  elseif key == "8" then
 --      local StickerTransition = require("modules.sticker_transition")
 --      transitionRef.value = StickerTransition.new(function() return menu end, transitionRef)

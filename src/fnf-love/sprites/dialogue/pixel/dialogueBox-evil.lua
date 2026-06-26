@@ -18,7 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ------------------------------------------------------------------------------]]
 
 
-local dialogueBox-evil = graphics.newSprite(
+local dialogueBox_evil = graphics.newSprite(
 	love.graphics.newImage(graphics.imagePath("dialogue/pixel/dialogueBox-evil")),
 	{
 		{x = 0, y = 0, width = 249, height = 145, offsetX = 0, offsetY = 0, offsetWidth = 0, offsetHeight = 0}, -- 1: Spirit Textbox spawn instance 10000
@@ -40,4 +40,4 @@ local dialogueBox-evil = graphics.newSprite(
 	"Spirit Textbox spawn instance"
 )
 
-return dialogueBox-evil
+return dialogueBox_evil
