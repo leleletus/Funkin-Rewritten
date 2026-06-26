@@ -1,5 +1,6 @@
 -- states/title.lua
 local atlasText = require("modules.atlas_text")
+local titleTextModule = require("sprites.menu.title-text")
 local Conductor = require("modules.conductor")
 local conductor = Conductor.new(102)
 
@@ -24,6 +25,29 @@ local titleVisible = false
 local cam = { sizeX = 0.9, sizeY = 0.9 }
 
 local confirmSound
+local musicVolumeTween
+local transitionTimer
+
+-- FlxG.camera.flash(WHITE, duration) real -- Rewritten no tiene un
+-- "camera flash" genérico (graphics.fadeIn/fadeOut son fundidos a NEGRO,
+-- algo completamente distinto) -- mismo patrón ya usado en
+-- stages/AngelIsland/stage.lua (flashAlpha local, decae con dt/duration,
+-- dibujado como rectángulo blanco encima de todo).
+local flashAlpha = 0
+local flashDuration = 1
+
+local function triggerFlash(duration)
+    flashAlpha = 1
+    flashDuration = duration or 1
+end
+
+-- newgrounds_logo / _classic / _animated -- ngSpr.loadGraphic real elige
+-- al azar entre las 3 variantes cada vez que se entra a la pantalla de
+-- título (FlxG.random.bool(1) -- 1% clásica; si no, FlxG.random.bool(30)
+-- -- 30% de el 99% restante -- animada; si no, la normal).
+local ngAnimImg, ngAnimQuads
+local ngAnimFrame = 0
+local ngAnimTimer = 0
 
 local function createCenteredText(y, text, style)
     local textObj = atlasText.new(0, y, text, style)
@@ -90,13 +114,21 @@ local function skipIntro()
     logoVisible = true
     gfVisible = true
     titleVisible = true
-    
-    -- Efectos visuales
-    graphics.setFade(1)
-    graphics.fadeIn(0.5)
+
+    -- BUG corregido: esto era un fundido a NEGRO (setFade(1)+fadeIn(0.5),
+    -- que además no hacía nada visible -- ya estaba en 1) en vez del
+    -- destello BLANCO real (FlxG.camera.flash(WHITE, ...)) que pasa al
+    -- terminar/saltar los créditos.
+    triggerFlash(1)
 end
 
+local movingToMenu = false
 local function moveToMainMenu()
+    -- Guarda contra el doble disparo: el timer de 2s y el "spam enter"
+    -- (que lo cancela y llama directo) podrían en teoría solaparse.
+    if movingToMenu then return end
+    movingToMenu = true
+
     graphics.fadeOut(0.5, function()
         Gamestate.switch(require("states.menu"))
     end)
@@ -165,6 +197,8 @@ end
 
 return {
     enter = function(self, previous)
+        flashAlpha = 0
+
         local introLines = getIntroTextShit()
         curWacky = introLines[love.math.random(#introLines)]
 
@@ -176,15 +210,55 @@ return {
         logo.x, logo.y = -350, -125
         gf.x, gf.y = 300, 50
 
-        -- Título "PRESS ENTER" (REEMPLAZO: Usar 720)
-        titleText = createCenteredText(720 * 0.8, "PRESS ENTER", "bold")
+        -- BUG corregido: esto era un texto renderizado por fuente
+        -- ("PRESS ENTER" con atlas_text) -- TitleState.hx real usa el
+        -- atlas ANIMADO "title-screen-text" (createTextureAtlas), con
+        -- una pose "Idle" en bucle y una animación "Confirm" al
+        -- presionar. title-text.lua espera el CENTRO deseado en pantalla
+        -- (no la posición real de FunkinSprite -- ver el comentario ahí
+        -- sobre por qué este atlas en particular necesita ese ajuste).
+        titleText = titleTextModule.new(1280 / 2, 720 * 0.8)
 
-        -- Logo Newgrounds
-        local ngSprImage = love.graphics.newImage("images/png/menu/newgrounds_logo.png")
+        -- Logo Newgrounds -- 3 variantes posibles, igual que el real:
+        -- FlxG.random.bool(1) (1%) clásica; si no, FlxG.random.bool(30)
+        -- (30% del 99% restante) animada (2 frames, 4fps); si no, la
+        -- normal.
+        ngAnimImg = nil; ngAnimQuads = nil; ngAnimFrame = 0; ngAnimTimer = 0
+        local ngScale = 1
+        local ngExtraY = 0
+        local ngImagePath
+
+        if love.math.random() < 0.01 then
+            ngImagePath = "images/png/menu/newgrounds_logo_classic.png"
+        elseif love.math.random() < 0.30 then
+            ngImagePath = "images/png/menu/newgrounds_logo_animated.png"
+            ngScale = 0.55
+            ngExtraY = 25
+        else
+            ngImagePath = "images/png/menu/newgrounds_logo.png"
+            ngScale = 0.8
+        end
+
+        local ngSprImage = love.graphics.newImage(ngImagePath)
+        local ngW, ngH = ngSprImage:getWidth(), ngSprImage:getHeight()
+
+        if ngImagePath:find("animated") then
+            -- loadGraphic(path, true, 600) real -- 2 frames de 600px de
+            -- ancho cada uno, en una sola fila.
+            ngAnimImg = ngSprImage
+            local frameW = 600
+            ngAnimQuads = {
+                love.graphics.newQuad(0, 0, frameW, ngH, ngW, ngH),
+                love.graphics.newQuad(frameW, 0, frameW, ngH, ngW, ngH),
+            }
+            ngW = frameW
+        end
+
         ngSpr = {
             image = ngSprImage,
-            x = (1280 - ngSprImage:getWidth()) / 2,
-            y = 720 * 0.52,
+            scale = ngScale,
+            x = (1280 - ngW * ngScale) / 2,
+            y = 720 * 0.52 + ngExtraY,
             visible = false
         }
 
@@ -192,11 +266,20 @@ return {
         conductor:addBeatHitCallback(onBeatHit)
 
         -- Música
+        -- BUG corregido: arrancaba directo a volumen completo --
+        -- playMenuMusic() real: startingVolume=0.0 +
+        -- music.fadeIn(4.0, 0.0, 1.0) (4 SEGUNDOS, no instantáneo).
         if not _G.music or not _G.music:isPlaying() then
             music = love.audio.newSource("music/menu/menu.ogg", "stream")
             music:setLooping(true)
+            music:setVolume(0)
             music:play()
             _G.music = music   -- compartir globalmente
+
+            musicVolumeTween = { v = 0 }
+            Timer.tween(4, musicVolumeTween, { v = 1 }, "linear", function()
+                musicVolumeTween = nil
+            end)
         else
             music = _G.music   -- Usar la música que ya venía del menú
         end
@@ -204,11 +287,17 @@ return {
         -- Sonido de confirmación
         confirmSound = love.audio.newSource("sounds/menu/confirm.ogg", "static")
 
+        -- FlxG.mouse.visible = false real -- mismo criterio, restaurado
+        -- en leave() para no afectar otras pantallas.
+        love.mouse.setVisible(false)
+
         -- Inicialmente ocultamos logo, gf y título
         logoVisible = false
         gfVisible = false
         titleVisible = false
         transitioning = false -- Asegurarnos de que no se quede pegado el estado de transición
+        movingToMenu = false
+        transitionTimer = nil
 
         -- 2. CORRECCIÓN DE LA PANTALLA NEGRA:
         if not initialized then
@@ -227,6 +316,30 @@ return {
     update = function(self, dt)
         conductor:update(dt, music:tell() * 1000)
 
+        -- fadeIn(4.0, 0.0, 1.0) real -- música arranca en silencio y
+        -- sube a volumen completo en 4s.
+        if musicVolumeTween then
+            music:setVolume(musicVolumeTween.v)
+        elseif initialized and music:getVolume() < 0.8 then
+            -- "if((FlxG.sound.music?.volume??1.0) < 0.8 && initialized)
+            -- music.volume += 0.5*elapsed" real -- red de seguridad para
+            -- cuando el volumen quedó bajo por algún otro motivo (pausa,
+            -- etc.) -- sube de a poco de vuelta, no de golpe.
+            music:setVolume(math.min(1, music:getVolume() + 0.5 * dt))
+        end
+
+        if flashAlpha > 0 then
+            flashAlpha = math.max(0, flashAlpha - dt / flashDuration)
+        end
+
+        if ngAnimQuads then
+            ngAnimTimer = ngAnimTimer + dt
+            if ngAnimTimer >= 1 / 4 then -- animation.add('idle',[0,1],4) real
+                ngAnimTimer = 0
+                ngAnimFrame = (ngAnimFrame == 0) and 1 or 0
+            end
+        end
+
         if logo then logo:update(dt) end
         if gf then gf:update(dt) end
 
@@ -236,13 +349,31 @@ return {
         if not graphics.isFading() then
             if input:pressed("confirm") then
                 if transitioning and skippedIntro then
+                    -- "Spam Enter" real: si ya está transicionando,
+                    -- saltar la espera de 2s y pasar de una.
+                    if transitionTimer then
+                        Timer.cancel(transitionTimer)
+                        transitionTimer = nil
+                    end
                     moveToMainMenu()
                 elseif not transitioning and skippedIntro then
+                    -- titleText.animation.play('press') real -- la
+                    -- animación de confirmación del atlas, en vez de
+                    -- quedarse en su pose "Idle" hasta que cambia de
+                    -- estado.
+                    if titleText then titleText:playConfirm() end
                     if confirmSound then confirmSound:play() end
-                    graphics.setFade(1)
-                    graphics.fadeIn(0.5)
+                    -- BUG corregido: esto fundía a negro de una (0.5s) en
+                    -- vez del destello blanco + 2 SEGUNDOS mostrando la
+                    -- animación "Confirm" antes de cambiar de estado
+                    -- (FlxG.camera.flash(WHITE,1) + new
+                    -- FlxTimer().start(2, moveToMainMenu) real).
+                    triggerFlash(1)
                     transitioning = true
-                    moveToMainMenu()
+                    transitionTimer = Timer.after(2, function()
+                        transitionTimer = nil
+                        moveToMainMenu()
+                    end)
                 elseif not skippedIntro then
                     skipIntro()
                 end
@@ -272,7 +403,11 @@ return {
                 local ngRelX = ngSpr.x - 1280 / 2
                 local ngRelY = ngSpr.y - 720 / 2
                 love.graphics.setColor(1, 1, 1)
-                love.graphics.draw(ngSpr.image, ngRelX, ngRelY)
+                if ngAnimQuads then
+                    love.graphics.draw(ngAnimImg, ngAnimQuads[ngAnimFrame + 1], ngRelX, ngRelY, 0, ngSpr.scale, ngSpr.scale)
+                else
+                    love.graphics.draw(ngSpr.image, ngRelX, ngRelY, 0, ngSpr.scale, ngSpr.scale)
+                end
             end
         love.graphics.pop()
 
@@ -283,10 +418,19 @@ return {
         for _, t in ipairs(textGroup) do
             t:draw()
         end
+
+        -- FlxG.camera.flash(WHITE, ...) real -- rectángulo blanco encima
+        -- de todo, decayendo (ver triggerFlash()/update()).
+        if flashAlpha > 0 then
+            love.graphics.setColor(1, 1, 1, flashAlpha)
+            love.graphics.rectangle("fill", 0, 0, 1280, 720)
+            love.graphics.setColor(1, 1, 1, 1)
+        end
     end,
 
     leave = function(self)
         --music:stop()
+        love.mouse.setVisible(true)
         Timer.clear()
     end
 }

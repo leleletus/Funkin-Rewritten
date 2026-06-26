@@ -3,8 +3,10 @@
 -- 1. Sparrow/Starling XML (<TextureAtlas><SubTexture .../></TextureAtlas>),
 --    el caso normal para personajes (BOYFRIEND.xml, GF_assets.xml, ...).
 --    Soporta el subconjunto necesario: <SubTexture> de un solo nivel con
---    atributos name/x/y/width/height/frameX/frameY/frameWidth/frameHeight
---    (sin tags anidados ni rotated="true", que no aparecen en estos archivos).
+--    atributos name/x/y/width/height/frameX/frameY/frameWidth/frameHeight,
+--    más rotated="true" (confirmado que SÍ aparece en algunos atlas reales
+--    -- Nene.xml de Weekend 1 tiene sus 90 frames con rotated="true" --
+--    ver modules/graphics.lua:newSprite() para cómo se "des-rota" al cargar).
 --
 -- 2. "Packer" genérico de TexturePacker, texto plano, una línea por frame:
 --    "nombre = x y width height" -- usado por un puñado de assets de Psych
@@ -45,6 +47,7 @@ local function parseSparrow(raw)
 			frameY = tonumber(attrs.frameY) or 0,
 			frameWidth = tonumber(attrs.frameWidth) or width,
 			frameHeight = tonumber(attrs.frameHeight) or height,
+			rotated = attrs.rotated == "true",
 		})
 	end
 

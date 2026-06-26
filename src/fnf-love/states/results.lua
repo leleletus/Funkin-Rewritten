@@ -66,6 +66,30 @@ local variationToMusic = {
     ["PERFECT"]   = "music/results/resultsPERFECT.ogg",
 }
 
+-- BUG real: esta fórmula (sick*100 + good*70 + bad*35, sobre total*100) NO
+-- coincidía con la que se muestra EN VIVO durante el gameplay
+-- (states/weeks.lua:recalculateRating(), self.ratingsData -- sick=1,
+-- good=0.67, bad=0.34, shit=0, citados ahí como los valores reales de Psych
+-- Engine Rating.hx) -- daba un % de precisión LIGERAMENTE distinto al del
+-- HUD para la misma partida (0.70 vs 0.67, 0.35 vs 0.34). Ahora se usa
+-- directo el mismo accuracy que ya calculó el gameplay (scores.accuracy,
+-- ver states/weeks.lua:buildScoreData()) -- esta función solo recalcula
+-- como fallback (debug-menu.lua todavía construye scores de prueba sin
+-- accuracy), y en ese caso usa los MISMOS pesos que el HUD para no volver
+-- a desincronizarse.
+local function computeAccuracy(scores)
+    if type(scores.accuracy) == "number" then
+        return scores.accuracy
+    end
+
+    local totalNotes = scores.sickCount + scores.goodCount + scores.badCount + scores.shitCount + scores.missedCount
+    if totalNotes == 0 then return 0 end
+
+    -- Mismos pesos que states/weeks.lua:self.ratingsData (.mod de cada rating)
+    local weightedHit = (scores.sickCount * 1) + (scores.goodCount * 0.67) + (scores.badCount * 0.34)
+    return math.min(1, math.max(0, weightedHit / totalNotes))
+end
+
 -- Umbrales de variación:
 --   PERFECT   : full combo de Sicks (0 misses, 0 bad, 0 shit, 0 good)
 --   EXCELLENT : precisión >= 90%
@@ -76,8 +100,7 @@ local function determineVariation(scores)
     local totalNotes = scores.sickCount + scores.goodCount + scores.badCount + scores.shitCount + scores.missedCount
     if totalNotes == 0 then return "GOOD" end
 
-    local weightedScore = (scores.sickCount * 100) + (scores.goodCount * 70) + (scores.badCount * 35)
-    local accuracy = weightedScore / (totalNotes * 100)
+    local accuracy = computeAccuracy(scores)
 
     if scores.missedCount == 0 and scores.badCount == 0 and scores.shitCount == 0 and scores.goodCount == 0 then
         return "PERFECT"
@@ -218,11 +241,8 @@ return {
         if tickSound then tickSound:stop(); tickSound = nil end
         if confirmSource then confirmSource:stop(); confirmSource = nil end
 
-        local scc    = scoreData_.scores
-        local totalN = scc.sickCount + scc.goodCount + scc.badCount + scc.shitCount + scc.missedCount
-        targetAccuracy = totalN > 0
-            and ((scc.sickCount * 100 + scc.goodCount * 70 + scc.badCount * 35) / (totalN * 100))
-            or 0
+        local scc = scoreData_.scores
+        targetAccuracy = computeAccuracy(scc)
 
         resultsVariation = determineVariation(scoreData_.scores)
 

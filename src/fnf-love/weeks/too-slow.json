@@ -1,0 +1,21 @@
+{
+	"songs": [
+		["Too Slow", "sonicexe", [150, 0, 0], "too-slow"]
+	],
+
+	"weekCharacters": ["sonicexe", "bf", "gf"],
+	"weekBackground": "AngelIsland",
+
+	"weekName": "Too Slow",
+	"storyName": "Too Slow",
+	"weekBefore": "",
+	"startUnlocked": true,
+	"hideStoryMode": true,
+	"hideFreeplay": false,
+	"mod": true,
+
+	"color": [150, 0, 0],
+	"prop": null,
+	"title": "too-slow",
+	"funnyText": "YOU'RE TOO SLOW"
+}

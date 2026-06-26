@@ -1,34 +1,9 @@
---[[----------------------------------------------------------------------------
-This file is part of Friday Night Funkin' Rewritten
+-- Puerto 1:1 de states/stages/Limo.hx:
+--   bgLimo = new BGSprite('limo/bgLimo', -150, 480, 0.4, 0.4, ['background limo pink'], true);
+-- x,y los sigue fijando stages/limo/stage.lua después de cargar (ver
+-- comentario ahí) -- acá solo se modernizó la fuente de frames (atlas real
+-- en vez de tabla hardcodeada). El nombre de la animación es el real de
+-- Psych ("background limo pink"), no el genérico "anim" de antes.
+local bgsprite = require("charts.psych.bgsprite")
 
-Copyright (C) 2021  HTV04
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
-------------------------------------------------------------------------------]]
-
-return graphics.newSprite(
-	love.graphics.newImage(graphics.imagePath("week4/bg-limo")),
-	-- Automatically generated from bgLimo.xml
-	{
-		{x = 0, y = 0, width = 2199, height = 379, offsetX = -19, offsetY = -5, offsetWidth = 2218, offsetHeight = 384}, -- 1: background limo pink0000
-		{x = 0, y = 389, width = 2218, height = 380, offsetX = 0, offsetY = -4, offsetWidth = 2218, offsetHeight = 384}, -- 2: background limo pink0001
-		{x = 0, y = 779, width = 2199, height = 384, offsetX = -19, offsetY = 0, offsetWidth = 2218, offsetHeight = 384}, -- 3: background limo pink0002
-		{x = 0, y = 1173, width = 2199, height = 384, offsetX = -19, offsetY = 0, offsetWidth = 2218, offsetHeight = 384} -- 4: background limo pink0003
-	},
-	{
-		["anim"] = {start = 1, stop = 4, speed = 24, offsetX = 0, offsetY = 0}
-	},
-	"anim",
-	true
-)
+return bgsprite.new("week4/bg-limo", 0, 0, {"background limo pink"}, true)

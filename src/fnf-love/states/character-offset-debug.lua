@@ -136,12 +136,21 @@ local HELP_LINES = {
 	"F1 o Escape para cerrar esta ayuda",
 }
 
+-- Filtro opcional de prefijo (ej. "sserafim-") -- seteado por
+-- state.setFilter() ANTES de Gamestate.switch(), para que debug-menu.lua
+-- pueda ofrecer un acceso directo que muestre SOLO un grupo de
+-- personajes (ej. "las 6 chicas de Sserafim") en vez de la carpeta
+-- characters/ completa.
+local browserFilter = nil
+
 local function updateBrowserEntries()
 	browser.entries = {}
 
 	for _, item in ipairs(love.filesystem.getDirectoryItems(CHAR_DIR)) do
 		local id = item:match("^(.+)%.json$")
-		if id and id ~= "_editor_scratch" then table.insert(browser.entries, id) end
+		if id and id ~= "_editor_scratch" and (not browserFilter or id:find(browserFilter, 1, true) == 1) then
+			table.insert(browser.entries, id)
+		end
 	end
 
 	table.sort(browser.entries)
@@ -642,6 +651,13 @@ local function cancelTextEdit()
 	justClosedTextEdit = true
 end
 
+-- Llamado por debug-menu.lua ANTES de Gamestate.switch(state) para
+-- ofrecer un acceso directo filtrado (ej. "Sserafim Characters" ->
+-- solo sserafim-*.json). prefix=nil quita el filtro (carpeta completa).
+function state.setFilter(prefix)
+	browserFilter = prefix
+end
+
 function state:enter()
 	graphics = require("modules.graphics")
 	input = require("input")
@@ -657,6 +673,11 @@ function state:enter()
 end
 
 local function updateBrowser()
+	if browserFilter and input:pressed("f3") then
+		browserFilter = nil
+		updateBrowserEntries()
+	end
+
 	if #browser.entries > 0 then
 		if input:pressed("up") then
 			browser.selection = browser.selection - 1
@@ -1033,7 +1054,11 @@ end
 local function drawBrowser()
 	love.graphics.setColor(1, 1, 0)
 	love.graphics.print("=== CHARACTER EDITOR ===", 10, 10)
-	love.graphics.print("Carpeta: " .. CHAR_DIR, 10, 30)
+	if browserFilter then
+		love.graphics.print("Filtro: \"" .. browserFilter .. "*\"  (F3 para quitarlo)", 10, 30)
+	else
+		love.graphics.print("Carpeta: " .. CHAR_DIR, 10, 30)
+	end
 	love.graphics.setColor(1, 1, 1)
 
 	for i, id in ipairs(browser.entries) do

@@ -17,10 +17,11 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ------------------------------------------------------------------------------]]
 
-local img = love.graphics.newImage(graphics.imagePath("pixel/rating"))
-img:setFilter("nearest", "nearest")
+-- images.rating: cacheada UNA vez en weeks.lua (enter()/setPixelMode, ya con
+-- setFilter aplicado), igual que images.numbers -- ver comentario completo
+-- en sprites/rating.lua (este archivo se re-ejecuta en cada golpe).
 return graphics.newSprite(
-	img,
+	images.rating,
 	{
 		{x = 0, y = 0, width = 51, height = 20, offsetX = 0, offsetY = 0, offsetWidth = 0, offsetHeight = 0}, -- 1: Sick
 		{x = 52, y = 0, width = 39, height = 16, offsetX = 0, offsetY = 0, offsetWidth = 0, offsetHeight = 0}, -- 2: Good

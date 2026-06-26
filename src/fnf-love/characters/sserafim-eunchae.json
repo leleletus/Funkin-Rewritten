@@ -1,0 +1,98 @@
+{
+	"healthbar_colors": [191, 14, 104],
+	"image": "characters/sserafim/eunchae",
+	"position": [
+		0,
+		260
+	],
+	"camera_position": [
+		0,
+		260
+	],
+	"flip_x": false,
+	"healthicon": "eunchae",
+	"animations": [
+		{
+			"anim": "idle",
+			"name": "idle e",
+			"loop": true,
+			"offsets": [
+				0,
+				0
+			]
+		},
+		{
+			"anim": "singLEFT",
+			"name": "eunchae left",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			]
+		},
+		{
+			"anim": "singDOWN",
+			"name": "eunchae down",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			]
+		},
+		{
+			"anim": "singUP",
+			"name": "eunchae up",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			]
+		},
+		{
+			"anim": "singRIGHT",
+			"name": "eunchae right",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			]
+		},
+		{
+			"anim": "singLEFTmiss",
+			"name": "eunchae miss left",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			]
+		},
+		{
+			"anim": "singDOWNmiss",
+			"name": "eunchae miss down",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			]
+		},
+		{
+			"anim": "singUPmiss",
+			"name": "eunchae miss up",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			]
+		},
+		{
+			"anim": "singRIGHTmiss",
+			"name": "eunchae miss right",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			]
+		}
+	],
+	"originMode": "feet"
+}

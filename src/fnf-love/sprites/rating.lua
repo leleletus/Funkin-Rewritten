@@ -17,8 +17,14 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ------------------------------------------------------------------------------]]
 
+-- images.rating: cacheada UNA vez en weeks.lua (enter()/setPixelMode), igual
+-- que images.numbers -- este archivo se re-ejecuta en CADA golpe de nota
+-- (spawnRatingPopup crea una instancia nueva por popup, comboStacking=true),
+-- así que cargar la imagen desde disco acá adentro la recargaría del disco
+-- en cada golpe -- carísimo, causaba hitches enormes (y de ahí los "saltos"
+-- raros de física, fades instantáneos, etc. por los picos de dt).
 return graphics.newSprite(
-	love.graphics.newImage(graphics.imagePath("rating")),
+	images.rating,
 	{
 		{x = 0, y = 0, width = 403, height = 152, offsetX = 0, offsetY = 0, offsetWidth = 0, offsetHeight = 0}, -- 1: Sick
 		{x = 404, y = 0, width = 317, height = 126, offsetX = 0, offsetY = 0, offsetWidth = 0, offsetHeight = 0}, -- 2: Good

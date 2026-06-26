@@ -76,7 +76,7 @@
 	"image": "characters/bfPixel",
 	"scale": 6,
 	"sing_duration": 4,
-	"healthicon": "bf-pixel",
+	"healthicon": "boyfriend (pixel)",
 	"position": [0, 350],
 	"camera_position": [0, 600],
 	"flip_x": true,

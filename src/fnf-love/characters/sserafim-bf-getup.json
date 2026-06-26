@@ -1,0 +1,33 @@
+{
+	"image": "sserafim/cutscene/bfGetUp",
+	"position": [
+		0,
+		0
+	],
+	"camera_position": [
+		0,
+		0
+	],
+	"flip_x": false,
+	"animations": [
+		{
+			"anim": "static",
+			"name": "BF Get Up",
+			"indices": [
+				0,
+				0
+			],
+			"loop": true
+		},
+		{
+			"anim": "getup",
+			"name": "BF Get Up",
+			"indices": [
+				1,
+				128
+			],
+			"loop": true
+		}
+	],
+	"originMode": "topleft"
+}

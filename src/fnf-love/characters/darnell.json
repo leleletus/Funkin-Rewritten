@@ -1,0 +1,127 @@
+{
+	"animations": [
+		{
+			"anim": "idle",
+			"name": "Idle",
+			"fps": 24,
+			"loop": false,
+			"indices": [],
+			"offsets": [-110, -110]
+		},
+		{
+			"anim": "singLEFT",
+			"name": "Pose Left",
+			"fps": 24,
+			"loop": false,
+			"indices": [],
+			"offsets": [-110, -110]
+		},
+		{
+			"anim": "singDOWN",
+			"name": "Pose Down",
+			"fps": 24,
+			"loop": false,
+			"indices": [],
+			"offsets": [-110, -120]
+		},
+		{
+			"anim": "singUP",
+			"name": "Pose Up",
+			"fps": 24,
+			"loop": false,
+			"indices": [],
+			"offsets": [-110, -110]
+		},
+		{
+			"anim": "singRIGHT",
+			"name": "Pose Right",
+			"fps": 24,
+			"loop": false,
+			"indices": [],
+			"offsets": [-110, -108]
+		},
+		{
+			"anim": "singLEFT-hold",
+			"name": "Left Flame Loop",
+			"fps": 24,
+			"loop": true,
+			"indices": [],
+			"offsets": [-110, -110]
+		},
+		{
+			"anim": "singDOWN-hold",
+			"name": "Down Flame Loop",
+			"fps": 24,
+			"loop": true,
+			"indices": [],
+			"offsets": [-110, -120]
+		},
+		{
+			"anim": "singUP-hold",
+			"name": "Up Flame Loop",
+			"fps": 24,
+			"loop": true,
+			"indices": [],
+			"offsets": [-110, -110]
+		},
+		{
+			"anim": "singRIGHT-hold",
+			"name": "Right Flame Loop",
+			"fps": 24,
+			"loop": true,
+			"indices": [],
+			"offsets": [-110, -108]
+		},
+		{
+			"anim": "laughCutscene",
+			"name": "Laugh",
+			"fps": 24,
+			"loop": false,
+			"indices": [0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5],
+			"offsets": [-108, -109]
+		},
+		{
+			"anim": "lightCan",
+			"name": "Light Can0",
+			"fps": 24,
+			"loop": false,
+			"indices": [],
+			"offsets": [-102, -109]
+		},
+		{
+			"anim": "kickCan",
+			"name": "Kick Up0",
+			"fps": 24,
+			"loop": false,
+			"indices": [],
+			"offsets": [-95, -101]
+		},
+		{
+			"anim": "kneeCan",
+			"name": "Knee Forward0",
+			"fps": 24,
+			"loop": false,
+			"indices": [],
+			"offsets": [-103, -111]
+		},
+		{
+			"anim": "pissed",
+			"name": "Gets Pissed0",
+			"fps": 24,
+			"loop": false,
+			"indices": [],
+			"offsets": [-110, -110]
+		}
+	],
+	"image": "characters/darnell",
+	"scale": 1,
+	"sing_duration": 6.1,
+	"healthicon": "darnell",
+	"position": [0, 175],
+	"camera_position": [10, 140],
+	"flip_x": false,
+	"no_antialiasing": false,
+	"healthbar_colors": [115, 94, 176],
+	"vocals_file": "",
+	"_editor_isPlayer": false
+}

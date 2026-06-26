@@ -44,7 +44,7 @@
 	"image": "characters/spirit",
 	"scale": 6,
 	"sing_duration": 4,
-	"healthicon": "spirit-pixel",
+	"healthicon": "spirit",
 	"position": [-150, 100],
 	"camera_position": [1202, 2240],
 	"flip_x": false,

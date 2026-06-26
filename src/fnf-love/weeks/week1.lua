@@ -34,8 +34,8 @@ return {
 		weeks:load()
 
 		local fileName = weekJSON.songs[song][4]
-		inst   = love.audio.newSource("music/week1/" .. fileName .. "-inst.ogg",   "stream")
-		voices = love.audio.newSource("music/week1/" .. fileName .. "-voices.ogg", "stream")
+		inst   = love.audio.newSource("music/" .. fileName .. "/Inst.ogg",   "stream")
+		voices = love.audio.newSource("music/" .. fileName .. "/Voices.ogg", "stream")
 
 		self:initUI()
 		weeks:setupCountdown()

@@ -44,7 +44,7 @@
 	"image": "characters/senpai",
 	"scale": 6,
 	"sing_duration": 4,
-	"healthicon": "senpai-pixel",
+	"healthicon": "senpai",
 	"position": [150, 360],
 	"camera_position": [350, 200],
 	"flip_x": false,

@@ -30,6 +30,7 @@ local psychEventDispatcher = require("charts.psych.events")
 local psychCharacters = require("charts.psych.characters")
 local psychStages = require("charts.psych.stages")
 local psychNoteTypes = require("charts.psych.notetypes")
+local splashShader = require("modules.splash_shader")
 
 -- Los 6 tipos de nota incorporados de Psych Engine (objects/Note.hx
 -- defaultNoteTypes). Cualquier otro noteTypeStr se trata como tipo
@@ -72,7 +73,10 @@ local botplayActive = false
 local botHolding = {false, false, false, false}
 local botKeyTimers = {}  -- Para gestionar el retorno a "off" de las flechas
 
--- Middle Scroll: centra las flechas del jugador y oculta las del oponente
+-- Middle Scroll (PlayState.hx real): centra las flechas del jugador --
+-- las del oponente NO se ocultan, quedan visibles con alpha 0.35
+-- superpuestas cerca del centro (antes esto las ocultaba del todo, lo
+-- cual no coincide con el comportamiento real).
 local middleScroll = false
 
 local animList = {
@@ -92,7 +96,21 @@ local NoteSize = 8.5
 
 -- Offset extra en coordenadas mundo para pegar la nota "end" al último "hold" en modo pixel.
 -- Si ves hueco: aumenta este valor. Si se superpone: disminúyelo. (Solo afecta modo pixel)
-local PIXEL_END_NOTE_OFFSET = (NoteSize - 1) * -13
+--
+-- DESACTIVADO (puesto en 0): los frames "hold" y "end" del atlas pixel
+-- (images/png/pixel/notes.png) comparten el MISMO canvas sin recorte (7x6,
+-- offsetWidth/offsetHeight=0 en ambos) -- graphics.lua centra el pivote de
+-- dibujado en el centro de ESE canvas para los dos frames por igual, así
+-- que la pieza "end" (que ahora cae exactamente en el final real del
+-- sustain, no en "donde dejó el loop") no necesita ningún desplazamiento
+-- extra para alinearse con la última pieza "hold": comparten pivote.
+-- El valor anterior (-97.5 con NoteSize=8.5, más de 2 pasos completos de
+-- separación entre piezas) no corresponde a esta geometría -- venía de
+-- antes de que el loop de abajo generara un número EXACTO de pasos
+-- (ver "numSteps"/"stepSize"), probablemente tuneado a mano contra una
+-- versión distinta de este sistema. Si vuelve a verse mal, ajustar este
+-- valor de nuevo SOLO después de confirmar visualmente en el juego.
+local PIXEL_END_NOTE_OFFSET = 0
 
 -- ============================================
 -- ESTILOS DE TEXTURA PARA NOTAS EN MODO PÍXEL
@@ -133,11 +151,6 @@ local characterColors = {
     senpai = {255, 170, 111},                     -- senpai
 	["senpai-angry"] = {255, 170, 111},           -- senpai grrr
     spirit = {255, 60, 110},                      -- spirit
-	yunjin = {223, 47, 136},                      -- yunjin
-	sakura = {223, 47, 136},                      -- sakura
-	chaewon  = {223, 47, 136},                    -- chaewon
-	eunchae  = {223, 47, 136},                    -- eunchae
-	kazuha  = {223, 47, 136},                     -- kazuha
 	sonic  = {0, 88, 183},                      -- sonic
 	sonic2  = {22, 13, 135},                      -- sonic2
 	sonic2poop  = {22, 13, 135},                      -- sonic2poop
@@ -145,8 +158,62 @@ local characterColors = {
 	crappyonic = {22, 13, 135},
 	darnell = {115, 94, 176},                      -- darnell
 	majin = {1, 2, 214},
-	crappyfriend = {49, 176, 209}
+	crappyfriend = {49, 176, 209},
+	-- kazuha/chaewon/eunchae/sakura/yunjin (colab Sserafim) comparten el
+	-- mismo rosa pastel oscuro pedido (191,14,104) -- nombres de ícono
+	-- confirmados en sprites/icons.lua. Mantenida como FALLBACK ahora que
+	-- healthBarColorFor() (ver abajo) prefiere el campo real del
+	-- personaje -- sigue haciendo falta para los pocos JSON de
+	-- cutscene/pose sin "healthbar_colors" (nunca personajes de gameplay
+	-- real) y como red de seguridad si la referencia al personaje
+	-- estuviera nil en el momento exacto de dibujar.
+	kazuha = {191, 14, 104},
+	chaewon = {191, 14, 104},
+	eunchae = {191, 14, 104},
+	sakura = {191, 14, 104},
+	yunjin = {191, 14, 104},
 }
+
+-- BUG corregido (round 44): el color de la barra de vida se sacaba
+-- SIEMPRE de characterColors (arriba), indexado por el NOMBRE DEL
+-- ÍCONO -- nunca del campo real del personaje ("healthbar_colors" en
+-- characters/*.json, leído por charts/psych/character.lua en
+-- sprite.psychChar.healthbar_colors, hasta ahora código muerto para
+-- esto). Auditados los 38 JSON de personajes existentes: 34/38 tienen el
+-- campo, y de esos, 32 coinciden EXACTO con la tabla hardcodeada -- bajo
+-- riesgo de cambiar el color de algo que ya se veía bien (las únicas 2
+-- diferencias reales encontradas, bf-pixel y nene, parecen ser la tabla
+-- hardcodeada desactualizada respecto al JSON, no al revés). Ahora se
+-- prefiere el campo del personaje REAL actualmente cargado en cada slot,
+-- cayendo a esta tabla por nombre de ícono solo si ese personaje no
+-- tiene el campo.
+local function healthBarColorFor(characterSprite, iconName)
+	local psychChar = characterSprite and characterSprite.psychChar
+	return (psychChar and psychChar.healthbar_colors) or characterColors[iconName]
+end
+
+-- BUG corregido (round 45): mismo patrón que healthBarColorFor() arriba,
+-- esta vez para el ÍCONO mismo -- charts/psych/character.lua YA lee
+-- "healthicon" del JSON del personaje en sprite.psychChar.healthicon,
+-- pero todo el código que llama a esto (acá, charts/psych/events.lua,
+-- modules/weekLoader.lua) usaba SIEMPRE entry.icon (el campo de la
+-- TABLA REGISTRO de charts/psych/characters.lua) en su lugar, código
+-- muerto para el campo del JSON otra vez. A diferencia de
+-- healthbar_colors, ACÁ el registro venía siendo la fuente correcta
+-- (cubre casos donde el nombre crudo del JSON no es ni siquiera un
+-- ícono real registrado en sprites/icons.lua, ej. "icon-sonic-exe") --
+-- auditados los 36 personajes del registro contra su propio JSON Y
+-- contra los nombres válidos de sprites/icons.lua: 25 de 36 JSON tenían
+-- un healthicon viejo/inválido (convención corta estilo Psych original,
+-- "bf"/"gf"/"dad"/"mom"/etc, que nunca coincide con los nombres más
+-- largos que usa este motor) -- corregidos los 24 archivos únicos
+-- afectados para que coincidan con el registro (ya confirmado válido en
+-- icons.lua) antes de cambiar este código. Ahora se prefiere el campo
+-- ya corregido del personaje, cayendo a entry.icon solo si falta.
+local function healthIconNameFor(characterSprite, entryIcon)
+	local psychChar = characterSprite and characterSprite.psychChar
+	return (psychChar and psychChar.healthicon) or entryIcon
+end
 
 camScale = {x = 1, y = 1}   -- zoom base para el efecto de beat (defaultCamZoom de Psych)
 
@@ -206,7 +273,12 @@ local function enemyCamTarget()
 	return -enemy.x - 150 - (p[1] or 0) / scaleX - sx, -enemy.y + 75 - (p[2] or 0) / scaleY - sy
 end
 
-gfDanceBeats = gfDanceBeats or 2  -- cada cuántos beats baila girlfriend ("Set GF Speed" de Psych)
+-- "Set GF Speed" de Psych real (PlayState.hx: gfSpeed, default 1) --
+-- MULTIPLICA al danceEveryNumBeats automático de girlfriend (ver
+-- triggerDanceBeat() más abajo), no es un divisor compartido para los 3
+-- personajes. El default real es 1 (sin esta gfDanceBeats=2 que tenía
+-- antes antes de esta sesión).
+gfDanceBeats = gfDanceBeats or 1
 local psychEvents = {}  -- eventos de chart Psych pendientes, ordenados por tiempo
 local spriteTimers = {}
 local gfDanceLeft = false        -- alterna danceLeft/danceRight para girlfriend
@@ -218,6 +290,16 @@ customGirlfriendIdle = customGirlfriendIdle or false
 -- Character.hx dance(): si el personaje no tiene "idle" pero sí
 -- danceLeft/danceRight, alterna entre ambos cada vez que se le pide
 -- "bailar" (igual que GF) en vez de quedarse congelado en una sola pose.
+-- Ver triggerDanceBeat() más abajo: protege cualquier animación que no sea
+-- dance/idle de ser interrumpida por el ciclo de baile mientras sigue en
+-- curso (notas reales, "scared", animaciones disparadas a mano en una
+-- cutscene, etc.) -- comparar contra nombres Psych como "sing*" no sirve
+-- porque getAnimName() devuelve el nombre INTERNO ya traducido (ver
+-- charts/psych/animnames.lua: "singUP" -> "up", no "singUP").
+local function isDanceOrIdle(name)
+	return name == "idle" or name == "danceLeft" or name == "danceRight"
+end
+
 local function danceOrIdle(sprite, wasLeft)
 	local anims = sprite:getAnims()
 	if anims["danceLeft"] and anims["danceRight"] then
@@ -235,15 +317,112 @@ local function danceOrIdle(sprite, wasLeft)
 	end
 end
 
--- Variables para el evento Highlight
-local highlightActive = false
-local highlightTarget = nil
+-- Character.hx real (recalculateDanceIdle): cada personaje tiene su PROPIO
+-- "danceEveryNumBeats", NO uno compartido -- si tiene danceLeft Y
+-- danceRight baila cada 1 beat (alternando, así un ciclo completo de
+-- ambas poses tarda 2 beats); si solo tiene "idle" baila cada 2 beats.
+-- Antes Rewritten usaba un único gfDanceBeats (=2) para los tres
+-- personajes por igual, sin mirar si cada uno tenía o no danceLeft/Right.
+local function danceEveryNumBeats(sprite)
+	local anims = sprite:getAnims()
+	if anims["danceLeft"] and anims["danceRight"] then
+		return 1
+	end
+	return 2
+end
+
+-- Contador de beats GLOBAL (no por personaje) -- cada llamada a
+-- triggerDanceBeat() representa UN beat real transcurrido; cada personaje
+-- decide POR SU CUENTA si le toca actuar en este beat según su propio
+-- danceEveryNumBeats (igual que "beat % char.danceEveryNumBeats == 0" en
+-- Character.hx/PlayState.hx real). Antes el ENVOLVENTE (afuera, en
+-- update()) ya filtraba a "una vez cada gfDanceBeats beats" ANTES de
+-- llegar acá, así que esta función nunca se enteraba de los beats
+-- intermedios -- ahora se llama UNA VEZ POR BEAT (ver el cambio en
+-- update() y en stages/military/stage.lua) y cada personaje filtra acá
+-- adentro, independiente.
+local danceBeatCounter = 0
+
+-- Extraído del cuerpo de update() (antes vivía inline en el "if
+-- musicThres~=oldMusicThres..." de ahí) para poder llamarlo también desde
+-- afuera (weeks:triggerDanceBeat(), ver más abajo en el return) -- las
+-- cutscenes de intro (p.ej. stages/military/stage.lua) congelan musicTime
+-- por completo (_G.cutscenePause, así nadie pierde notas mientras dura la
+-- cutscene), así que necesitan su PROPIO reloj de beat independiente para
+-- seguir haciendo bailar a bf/gf/enemy -- llaman a esto directo, sin pasar
+-- por la condición de musicThres/absMusicTime (que está congelada).
+local function triggerDanceBeat()
+	danceBeatCounter = danceBeatCounter + 1
+
+	if not customGirlfriendIdle then
+		if spriteTimers[1] == 0 then
+			-- No interrumpir "sad" (Mom) ni "hairBlow"/"hairFall"
+			-- (Philly, tren pasando) si aún están animándose --
+			-- mismo patrón que "scared" para enemy/boyfriend más
+			-- abajo (lightning strike de Spooky).
+			local gfAnim = girlfriend:getAnimName()
+			local gfSpecial = gfAnim == "sad" or gfAnim == "hairBlow" or gfAnim == "hairFall"
+			-- BUG corregido: a diferencia de enemy/boyfriend más abajo
+			-- (que SÍ tienen "isDanceOrIdle(anim) or not isAnimated()"),
+			-- girlfriend NUNCA tuvo ese guard genérico -- solo el de
+			-- "sad"/"hairBlow"/"hairFall" de arriba. Cualquier semana que
+			-- anime a girlfriend con una pose que NO sea esas 3 ni
+			-- danceLeft/danceRight/idle (ej. Sserafim: "left"/"right"/
+			-- "up"/"down" cuando es su turno de cantar) se veía
+			-- interrumpida por este baile automático apenas llegaba el
+			-- siguiente beat -- mismo patrón que real (BaseCharacter.hx:
+			-- dance() hace "if (isSinging()) return;" antes de bailar).
+			local gfBusy = not isDanceOrIdle(gfAnim) and girlfriend:isAnimated()
+			-- PlayState.hx real: "beat % Math.round(gfSpeed * gf.danceEveryNumBeats) == 0"
+			-- -- gfSpeed (gfDanceBeats acá, evento de chart "Set GF Speed")
+			-- MULTIPLICA al danceEveryNumBeats automático, no lo reemplaza.
+			-- Es la única de las 3 con un evento de chart para esto (no hay
+			-- "Set BF/Dad Speed" en Psych vanilla).
+			local gfInterval = math.max(1, math.floor((gfDanceBeats or 1) * danceEveryNumBeats(girlfriend) + 0.5))
+			if not (gfSpecial and girlfriend:isAnimated()) and not gfBusy and danceBeatCounter % gfInterval == 0 then
+				local gfAnims = girlfriend:getAnims()
+				if gfAnims["danceLeft"] and gfAnims["danceRight"] then
+					gfDanceLeft = not gfDanceLeft
+					girlfriend:animate(gfDanceLeft and "danceLeft" or "danceRight", false)
+				elseif gfAnims["idle"] then
+					girlfriend:animate("idle", false)
+					girlfriend:setAnimSpeed(14.4 / (60 / bpm))
+				end
+				-- Si no tiene "idle" ni danceLeft/danceRight (p.ej.
+				-- pico-speaker, que solo tiene shoot*/shoot*-loop),
+				-- no tocar nada: no hay con qué "bailar" y forzar
+				-- setAnimSpeed encima de su animación real (el loop
+				-- de disparo) la dejaría sonando/jugando a velocidad
+				-- equivocada.
+			end
+		end
+	end
+	if spriteTimers[2] == 0 then
+		local enemyAnim = enemy:getAnimName()
+		if (isDanceOrIdle(enemyAnim) or not enemy:isAnimated()) and danceBeatCounter % danceEveryNumBeats(enemy) == 0 then
+			enemyDanceLeft = danceOrIdle(enemy, enemyDanceLeft)
+		end
+	end
+	if spriteTimers[3] == 0 then
+		local bfAnim = boyfriend:getAnimName()
+		if (isDanceOrIdle(bfAnim) or not boyfriend:isAnimated()) and danceBeatCounter % danceEveryNumBeats(boyfriend) == 0 then
+			boyfriendDanceLeft = danceOrIdle(boyfriend, boyfriendDanceLeft)
+		end
+	end
+end
+
+-- Variables para el evento Highlight (solo fade de HUD, ver setHighlight())
 local guiAlphaObj = {value = 1}
 local guiAlphaTween = nil
-local highlightCamTimer = nil
 local currentMustHit = false
 
-local ratingTimers = {}
+-- Pool de popups de rating/combo activos (cada uno con su propio sprite de
+-- rating + 3 números + velocidad/aceleración + edad/alpha) -- ver
+-- spawnRatingPopup() más abajo. Reemplaza el viejo sistema de un solo
+-- "rating"/"numbers" reusado (que se comportaba como comboStacking=false,
+-- al revés del default real de Psych).
+local activeRatingPopups = {}
+
 local beatPulse = 1
 local beatPulseState = "idle"  -- "idle", "rising", "falling"
 local beatPulseTimer = 0
@@ -257,7 +436,17 @@ local nextGroupId = 1
 
 local useAltAnims
 local notMissed = {}
-local enemyTimer
+-- spriteLoopTimers[timerID]: un Timer.after por slot (1=girlfriend,
+-- 2=enemy, 3=boyfriend) que corta a fuerza una animación en LOOP (notas
+-- hold) de vuelta a "idle" una vez transcurrida su duración natural, si
+-- para entonces sigue siendo la animación activa. Ver safeAnimate() más
+-- abajo -- reemplaza los 3 hackeos viejos hardcodeados por personaje
+-- (isTankman/isSonicEXE/isSonicYCR), que además solo cubrían UN nombre de
+-- animación exacto cada uno (el de Sonic.exe apuntaba a "left alt", que ni
+-- existe en characters/sonic-exe.json -- su única alt es "down alt" --
+-- así que nunca se disparaba; y ninguno de los 3 cubría las notas hold SIN
+-- alt, ni a ningún otro personaje/mod con el mismo problema).
+local spriteLoopTimers = {}
 -- =============================================================
 -- SISTEMA DE SPLASHES (FNF original)
 -- Cada hit sick crea una instancia nueva e independiente.
@@ -280,18 +469,56 @@ local function fireSplash(laneIdx)
     local loaderFn = splashLoaderFns[laneIdx]
     if not loaderFn then return end
     local sp = loaderFn()
-    local scale
-    if splashLoaderIsCustom then
-        -- Splash custom: escala según lo que se indicó en setSplash
-        scale = splashCustomIsPixel and NoteSize or 1.5
+
+    -- "Vanilla" real de Psych: solo en el camino DEFAULT (sin setSplash
+    -- activo) y solo en semanas NO pixel -- el splash pixel queda intacto,
+    -- a pedido explícito.
+    local isVanillaDefault = (not splashLoaderIsCustom) and (not _G.isPixelWeek)
+
+    if isVanillaDefault then
+        -- Escala 1/0.7: el sprite ya está armado a partir del atlas REAL de
+        -- Psych con scale=1 (noteSplashes-vanilla.json) -- 1/0.7 compensa el
+        -- scale(0.7,0.7) global de drawUI() para que el tamaño final en
+        -- pantalla coincida con Psych exacto (ver sprites/splash-down.lua).
+        sp.sizeX, sp.sizeY = 1 / 0.7, 1 / 0.7
+
+        -- Posición: igual que el splash viejo (sp.x/y = strum.x/y directo,
+        -- SIN la resta de swagWidth que usa Psych real). Psych necesita esa
+        -- resta porque babyArrow.x en Flixel es la esquina SUPERIOR-IZQUIERDA
+        -- del hitbox del strum, no su centro -- acá sprite.x YA es
+        -- conceptualmente el centro (ver graphics.lua: el dibujado centra
+        -- usando el propio recorte del frame), así que restar swagWidth
+        -- duplicaba el desplazamiento y el splash aparecía lejos del strum.
+        -- El ajuste fino real de Psych (offset.set(10,10) + offset de la
+        -- animación) sigue aplicado más abajo, vía anim.offsetX/Y.
+        sp.x = boyfriendArrows[laneIdx].x
+        sp.y = boyfriendArrows[laneIdx].y
+
+        -- maxAnims=2 en Psych real (variantes "1"/"2" del atlas vanilla,
+        -- elegidas al azar -- NoteSplash.hx: FlxG.random.int(0, maxAnims-1)).
+        local anim = love.math.random(2) == 1 and "splash1" or "splash2"
+        sp:animate(anim, false)
+        -- fps al azar 22-26, igual que Psych (NoteSplash.hx: FlxG.random.int(minFps, maxFps)).
+        sp:setAnimSpeed(love.math.random(22, 26))
+        -- Tintado RGB por carril (PixelSplashShader real de Psych, ver
+        -- modules/splash_shader.lua) -- el sprite es el mismo arte rojo/verde
+        -- para los 4 colores, el shader lo recolorea según el carril.
+        sp.shader = splashShader.forLane(laneIdx)
     else
-        -- Splash default: escala según el modo actual de la canción
-        scale = _G.isPixelWeek and NoteSize or 1.5
+        local scale
+        if splashLoaderIsCustom then
+            -- Splash custom: escala según lo que se indicó en setSplash
+            scale = splashCustomIsPixel and NoteSize or 1.5
+        else
+            -- Splash default pixel: escala según el modo actual de la canción
+            scale = _G.isPixelWeek and NoteSize or 1.5
+        end
+        sp.sizeX, sp.sizeY = scale, scale
+        sp.x = boyfriendArrows[laneIdx].x
+        sp.y = boyfriendArrows[laneIdx].y
+        sp:animate(splashCustomAnim, false)
     end
-    sp.sizeX, sp.sizeY = scale, scale
-    sp.x = boyfriendArrows[laneIdx].x
-    sp.y = boyfriendArrows[laneIdx].y
-    sp:animate(splashCustomAnim, false)
+
     table.insert(activeSplashes[laneIdx], sp)
 end
 
@@ -316,20 +543,143 @@ end
 -- ============================================
 local customSplashLoader = nil
 local customSplashSound  = nil
-local holdSplashArrows
-local holdSplashVisible = {false, false, false, false}
-local holdActive = {false, false, false, false}
-local holdActiveGroup = {nil, nil, nil, nil}  -- holdGroupId activo por carril
-local enemyHoldSplashArrows
-local enemyHoldSplashVisible = {false, false, false, false}
-local enemyHoldActive = {false, false, false, false}
+-- NOTA: el sistema "HoldSplash" (cover animado sobre el strum mientras se
+-- mantiene un sustain) se eliminó por completo a pedido del usuario
+-- (2026-06-19), en ambos modos normal y pixel. Psych Engine real no tiene
+-- este efecto -- era una adición propia de Rewritten. Su funcionamiento
+-- completo quedó documentado en la memoria del asistente (memoria de
+-- proyecto "holdsplash-system-removed") por si se necesita restaurar; los
+-- archivos de sprite (sprites/HoldSplash-*.lua y sprites/pixel/HoldSplash-*.lua)
+-- y las imágenes "holdCover*" NO se borraron, solo el código que los usaba.
 
--- Ventanas de tiempo (ms) y tiempo de eliminación de notas
-local HIT_WINDOW_SICK = 45      -- antes 22.5
-local HIT_WINDOW_GOOD = 75      -- antes 45
-local HIT_WINDOW_BAD = 140      -- antes 90
-local HIT_WINDOW_SHIT = 200     -- antes 135
+-- Ventanas de tiempo (ms) y tiempo de eliminación de notas -- valores EXACTOS
+-- de Psych Engine real (ClientPrefs.hx default: sickWindow=45, goodWindow=90,
+-- badWindow=135; Conductor.safeZoneOffset = (10/60)*1000 = 166.666... como
+-- límite de "shit"/miss). Antes estos valores no coincidían con Psych en
+-- absoluto (ver auditoría de game feel).
+local HIT_WINDOW_SICK = 45
+local HIT_WINDOW_GOOD = 90
+local HIT_WINDOW_BAD = 135
+
+-- Multiplicador de velocidad visual de notas. Real Psych (Note.hx:
+-- followStrumNote): distance = 0.45 * deltaTime * songSpeed, ya en píxeles
+-- de pantalla finales (FlxG, sin transformación extra). Rewritten dibuja
+-- TODO el gameplay/HUD dentro de un push() con scale(0.7,0.7) (drawUI(),
+-- más abajo) -- por eso el multiplicador en "unidades locales" (antes de
+-- ese 0.7) tiene que ser 0.45/0.7, no 0.45 directo, para que la velocidad
+-- en píxeles de PANTALLA real coincida con Psych.
+local NOTE_SCROLL_MULT = 0.45 / 0.7
+local HIT_WINDOW_SHIT = 166.667
 local NOTE_KILL_OFFSET = 300    -- antes 350
+
+-- ============================================
+-- POSICIÓN DEL POPUP DE RATING/COMBO (igual que PlayState.hx:popUpScore)
+-- ============================================
+-- Real Psych: placement = FlxG.width*0.35 (lienzo 1280x720); rating.x =
+-- placement-40 (top-left, SIN centrar); rating.y = screenCenter(720,height)-60.
+-- El centro REAL del sprite (lo que a nosotros nos importa, porque nuestro
+-- .x/.y ya es el centro) es top-left + mitad del tamaño NATIVO del frame --
+-- y la altura se cancela algebraicamente: centerY = (720-h)/2 - 60 + h/2 =
+-- 300 SIEMPRE, sin importar el rating (sick/good/bad/shit tienen alturas
+-- distintas). Igual para los números: numScore.y = (720-h)/2 + 80 (SUMA,
+-- no reemplaza) => centerY = (720-h)/2 + 80 + h/2 = 440 SIEMPRE.
+-- El ancho NO se cancela (rating.x es fijo sin depender del ancho), así que
+-- el centro horizontal sí varía un poco según el ancho de cada frame --
+-- igual que en Psych real (no es un bug, es el comportamiento real: cada
+-- imagen de rating tiene un ancho nativo distinto). Por eso estas funciones
+-- leen el ancho ACTUAL del frame ya animado, en vez de usar una constante.
+--
+-- localValor = (pantallaValor - centroLienzo) / 0.7 (ver convención usada en
+-- toda esta función para timeBar/healthBar).
+local RATING_TOPLEFT_X_SCREEN = 1280 * 0.35 - 40   -- 408
+local RATING_CENTER_Y_SCREEN = 300
+local NUMBERS_TOPLEFT_X_BASE_SCREEN = 1280 * 0.35 - 90  -- 358 (+43 por dígito)
+local NUMBERS_CENTER_Y_SCREEN = 440
+
+local RATING_SPAWN_Y = (RATING_CENTER_Y_SCREEN - 360) / 0.7
+local NUMBERS_SPAWN_Y = (NUMBERS_CENTER_Y_SCREEN - 360) / 0.7
+
+-- spriteObj debe tener ya su animación actual seteada (:animate(...)) antes
+-- de llamar a esto, porque usa el ancho del frame ACTUAL.
+--
+-- IMPORTANTE: NO multiplicar por spriteObj.sizeX acá -- el "+ancho/2" viene
+-- de la derivación de Psych usando el ancho NATIVO del PNG (igual al
+-- nuestro, son los mismos assets, confirmado con PIL), y esa derivación ya
+-- canceló la escala propia de Psych (su setGraphicSize ocurre DESPUÉS de
+-- fijar la posición). El sizeX de nuestro sprite es un factor de TAMAÑO
+-- visual aparte (0.75 vs el 0.7 real de Psych, decidido en otra sesión),
+-- no debe mezclarse con este cálculo de POSICIÓN.
+local function ratingSpawnX(spriteObj)
+	local screenCenterX = RATING_TOPLEFT_X_SCREEN + spriteObj:getFrameWidth() / 2
+	return (screenCenterX - 640) / 0.7
+end
+
+-- loopIdx: 0 = centena, 1 = decena, 2 = unidad (igual que "daLoop" en Psych).
+local function numberSpawnX(spriteObj, loopIdx)
+	local topLeftScreen = NUMBERS_TOPLEFT_X_BASE_SCREEN + 43 * loopIdx
+	local screenCenterX = topLeftScreen + spriteObj:getFrameWidth() / 2
+	return (screenCenterX - 640) / 0.7
+end
+
+-- Crea un popup de rating/combo INDEPENDIENTE y lo agrega al pool
+-- (activeRatingPopups) -- igual que el "new FlxSprite()" por golpe de
+-- PlayState.hx:popUpScore real con comboStacking=true (el default, ver
+-- ClientPrefs.hx:47): NO reusa ni cancela el popup anterior, así que con
+-- combos rápidos se ven varios superpuestos, igual que en Psych real.
+-- ratingLoaderFn/numbersLoaderFn/ratingScaleX·Y/numberScaleX·Y se asignan
+-- en enter() según el modo (pixel/normal) vigente en ESE momento.
+local function spawnRatingPopup(ratingType, comboNum)
+	local popup = {
+		age = 0,
+		fadeDuration = 0.2,
+		alpha = 1,
+		rating = ratingLoaderFn(),
+		numbers = {},
+		numVelX = {}, numVelY = {}, numAccelY = {}
+	}
+
+	-- Velocidad/aceleración: PlayState.hx real las da en píxeles de PANTALLA
+	-- (FlxG, sin transformación extra) -- igual que con NOTE_SCROLL_MULT,
+	-- hay que dividir por 0.7 para que, tras el scale(0.7,0.7) de drawUI(),
+	-- el movimiento en píxeles de pantalla REAL coincida con Psych. Sin
+	-- esto, el popup se movía a la velocidad NUMÉRICA de Psych pero en
+	-- unidades locales (más grandes), o sea, mucho más rápido en pantalla
+	-- de lo que debía.
+	popup.rating.sizeX, popup.rating.sizeY = ratingScaleX, ratingScaleY
+	popup.rating:animate(ratingType, false)
+	popup.rating.x = ratingSpawnX(popup.rating)
+	popup.rating.y = RATING_SPAWN_Y
+	popup.velX = -love.math.random(0, 10) / 0.7
+	popup.velY = -love.math.random(140, 175) / 0.7
+	popup.accelY = 550 / 0.7
+
+	local digits = {
+		math.floor(comboNum / 100 % 10),
+		math.floor(comboNum / 10 % 10),
+		math.floor(comboNum % 10)
+	}
+	for k = 1, 3 do
+		local n = numbersLoaderFn()
+		n.sizeX, n.sizeY = numberScaleX, numberScaleY
+		n:animate(tostring(digits[k]), false)
+		n.x = numberSpawnX(n, k - 1)
+		n.y = NUMBERS_SPAWN_Y
+		popup.numbers[k] = n
+		popup.numVelX[k] = love.math.random(-5, 5) / 0.7
+		popup.numVelY[k] = -love.math.random(140, 160) / 0.7
+		popup.numAccelY[k] = love.math.random(200, 300) / 0.7
+	end
+
+	table.insert(activeRatingPopups, popup)
+end
+
+-- Paso entre piezas de sustain ("for k = HOLD_STEP/speed, noteLength,
+-- HOLD_STEP/speed"). El "71" original estaba calibrado para el multiplicador
+-- de velocidad VIEJO (0.6 local): paso real en píxeles = 71*0.6. Al cambiar
+-- NOTE_SCROLL_MULT, ese paso en píxeles creció ~7% sin que el tamaño de cada
+-- pieza cambiara, dejando un hueco visible entre piezas (sustain "entrecortado").
+-- Se compensa para que el paso en píxeles quede igual que antes.
+local HOLD_STEP = 71 * 0.6 / NOTE_SCROLL_MULT
 
 return {
 	enter = function(self, songIndex, songAppend, isStoryMode, songName)
@@ -364,6 +714,8 @@ return {
 			notesImgPixel:setFilter("nearest", "nearest")
 			local numbersImgPixel = love.graphics.newImage(graphics.imagePath("pixel/numbers"))
 			numbersImgPixel:setFilter("nearest", "nearest")
+			local ratingImgPixel = love.graphics.newImage(graphics.imagePath("pixel/rating"))
+			ratingImgPixel:setFilter("nearest", "nearest")
 			sounds = {
 				countdown = {
 					three = love.audio.newSource("sounds/pixel/countdown-3.ogg", "static"),
@@ -382,6 +734,7 @@ return {
 				icons        = love.graphics.newImage(graphics.imagePath("icons")),
 				notes        = notesImgPixel,
 				numbers      = numbersImgPixel,
+				rating       = ratingImgPixel,
 				noteSplashes = notesImgPixel,
 				timeBar      = self._sharedTimeBar
 			}
@@ -409,6 +762,7 @@ return {
 				icons        = love.graphics.newImage(graphics.imagePath("icons")),
 				notes        = love.graphics.newImage(graphics.imagePath("notes")),
 				numbers      = love.graphics.newImage(graphics.imagePath("numbers")),
+				rating       = love.graphics.newImage(graphics.imagePath("rating")),
 				noteSplashes = love.graphics.newImage(graphics.imagePath("noteSplashes")),
 				timeBar      = self._sharedTimeBar
 			}
@@ -422,27 +776,30 @@ return {
 		girlfriend = love.filesystem.load("sprites/girlfriend.lua")()
 		boyfriend = love.filesystem.load("sprites/boyfriend.lua")()
 
+		-- Pool de popups de rating/combo (ver spawnRatingPopup) -- igual que
+		-- Psych real con comboStacking=true (default, ClientPrefs.hx:47):
+		-- cada golpe crea SU PROPIA instancia independiente, no se reusa ni
+		-- se cancela la anterior, así que pueden verse varias superpuestas
+		-- si se pulsa rápido. Los loaders quedan guardados para que
+		-- spawnRatingPopup() cree instancias frescas en el modo correcto.
+		-- /0.7: estas escalas se pensaron para dibujarse SIN el scale(0.7,0.7)
+		-- extra de drawUI() (antes drawRating() se llamaba desde el stage,
+		-- sin ese scale). Al mover el dibujado a drawUI(), sin esta
+		-- compensación el resultado final quedaba 0.7x más chico de lo que
+		-- debía (igual que con posición/velocidad -- misma conversión,
+		-- aplicada a escala esta vez).
 		if _G.isPixelWeek then
-			rating = love.filesystem.load("sprites/pixel/rating.lua")()
+			ratingLoaderFn = love.filesystem.load("sprites/pixel/rating.lua")
+			numbersLoaderFn = love.filesystem.load("sprites/pixel/numbers.lua")
+			ratingScaleX, ratingScaleY = NoteSize * 0.75 / 0.7, NoteSize * 0.75 / 0.7
+			numberScaleX, numberScaleY = NoteSize * 0.5 / 0.7, NoteSize * 0.5 / 0.7
 		else
-			rating = love.filesystem.load("sprites/rating.lua")()
-		end	
-
-		if _G.isPixelWeek then
-			rating.sizeX, rating.sizeY = NoteSize * 0.75, NoteSize * 0.75
-			numbers = {}
-			for i = 1, 3 do
-				numbers[i] = sprites.numbers()
-				numbers[i].sizeX, numbers[i].sizeY = NoteSize * 0.5, NoteSize * 0.5
-			end
-		else
-			rating.sizeX, rating.sizeY = 0.75, 0.75
-			numbers = {}
-			for i = 1, 3 do
-				numbers[i] = sprites.numbers()
-				numbers[i].sizeX, numbers[i].sizeY = 0.5, 0.5
-			end
+			ratingLoaderFn = love.filesystem.load("sprites/rating.lua")
+			numbersLoaderFn = love.filesystem.load("sprites/numbers.lua")
+			ratingScaleX, ratingScaleY = 0.75 / 0.7, 0.75 / 0.7
+			numberScaleX, numberScaleY = 0.5 / 0.7, 0.5 / 0.7
 		end
+		activeRatingPopups = {}
 
 		enemyIcon = icons.create()
 		boyfriendIcon = icons.create()
@@ -485,12 +842,7 @@ return {
 
 		cam.x, cam.y = bfCamTarget()
 
-		rating.x = girlfriend.x
-		for i = 1, 3 do
-			numbers[i].x = girlfriend.x - 100 + 50 * i
-		end
-
-		ratingVisibility = {0}
+		activeRatingPopups = {}
 		combo = 0
 		self.songEnded = false
 
@@ -528,11 +880,15 @@ return {
 		self.ratingName = "?"
 		self.ratingPercent = 0
 		self.ratingFC = ""
+		-- mod = ratingMod real de Psych Engine (Rating.hx): sick=1, good=0.67,
+		-- bad=0.34, shit=0 -- antes estos valores eran más altos (0.8/0.5/0.2),
+		-- lo que hacía que el % de accuracy se reportara más alto que en Psych
+		-- para los mismos hits exactos.
 		self.ratingsData = {
 			sick = {hits = 0, score = 350, mod = 1},
-			good = {hits = 0, score = 200, mod = 0.8},
-			bad = {hits = 0, score = 100, mod = 0.5},
-			shit = {hits = 0, score = 50, mod = 0.2}
+			good = {hits = 0, score = 200, mod = 0.67},
+			bad = {hits = 0, score = 100, mod = 0.34},
+			shit = {hits = 0, score = 50, mod = 0}
 		}
 		self.ratingStuff = {
 			{"You Suck!", 0.2},
@@ -553,14 +909,6 @@ return {
 		nextGroupId = 1
 		holdGroupsInfo = {}
 		botHolding = {false, false, false, false}
-		-- Resetear estado de splashes del enemigo Y del jugador.
-		-- Si se sale de una canción mientras se sostiene un hold, los flags
-		-- quedan en true y el sprite congelado se dibuja en la siguiente canción.
-		holdActive             = {false, false, false, false}
-		holdActiveGroup        = {nil, nil, nil, nil}
-		holdSplashVisible      = {false, false, false, false}
-		enemyHoldActive        = {false, false, false, false}
-		enemyHoldSplashVisible = {false, false, false, false}
 		-- Limpiar instancias de splash activas
 		activeSplashes        = {{}, {}, {}, {}}
 		splashLoaderFns       = {nil, nil, nil, nil}
@@ -577,21 +925,21 @@ return {
 		enemyArrows = { sprites.leftArrow(), sprites.downArrow(), sprites.upArrow(), sprites.rightArrow() }
 		boyfriendArrows = { sprites.leftArrow(), sprites.downArrow(), sprites.upArrow(), sprites.rightArrow() }
 		activeSplashes = {{}, {}, {}, {}}
-		holdSplashArrows = { sprites.holdSplashLeft(), sprites.holdSplashDown(), sprites.holdSplashUp(), sprites.holdSplashRight() }
-		enemyHoldSplashArrows = { sprites.holdSplashLeft(), sprites.holdSplashDown(), sprites.holdSplashUp(), sprites.holdSplashRight() }
 
 		if _G.isPixelWeek then
 			for i = 1, 4 do
-				holdSplashArrows[i].sizeX, holdSplashArrows[i].sizeY = NoteSize, NoteSize
-				enemyHoldSplashArrows[i].sizeX, enemyHoldSplashArrows[i].sizeY = NoteSize, NoteSize
-			end
-			for i = 1, 4 do
 				if middleScroll then
 					boyfriendArrows[i].x = -412.5 + 165 * i
-					enemyArrows[i].x = -925 + 165 * i
+					-- Real (PlayState.hx): el oponente NO se oculta en
+					-- middlescroll, se superpone cerca del centro con
+					-- alpha 0.35 (left/down un casillero a la izquierda
+					-- del rango del jugador, up/right uno a la derecha).
+					enemyArrows[i].x = (-412.5 + 165 * i) + (i <= 2 and -550 or 550)
+					enemyArrows[i].alpha = 0.35
 				else
 					enemyArrows[i].x = -925 + 165 * i
 					boyfriendArrows[i].x = 100 + 165 * i
+					enemyArrows[i].alpha = 1
 				end
 				if settings.downscroll then
 					enemyArrows[i].y = 375
@@ -602,25 +950,19 @@ return {
 				end
 				enemyArrows[i].sizeX, enemyArrows[i].sizeY = NoteSize, NoteSize
 				boyfriendArrows[i].sizeX, boyfriendArrows[i].sizeY = NoteSize, NoteSize
-				holdSplashArrows[i].x = boyfriendArrows[i].x
-				holdSplashArrows[i].y = boyfriendArrows[i].y
-				enemyHoldSplashArrows[i].x = enemyArrows[i].x
-				enemyHoldSplashArrows[i].y = enemyArrows[i].y
 				enemyNotes[i] = {}
 				boyfriendNotes[i] = {}
 			end
 		else
 			for i = 1, 4 do
-				holdSplashArrows[i].sizeX, holdSplashArrows[i].sizeY = 1.5, 1.5
-				enemyHoldSplashArrows[i].sizeX, enemyHoldSplashArrows[i].sizeY = 1.5, 1.5
-			end
-			for i = 1, 4 do
 				if middleScroll then
 					boyfriendArrows[i].x = -412.5 + 165 * i
-					enemyArrows[i].x = -925 + 165 * i
+					enemyArrows[i].x = (-412.5 + 165 * i) + (i <= 2 and -550 or 550)
+					enemyArrows[i].alpha = 0.35
 				else
 					enemyArrows[i].x = -925 + 165 * i
 					boyfriendArrows[i].x = 100 + 165 * i
+					enemyArrows[i].alpha = 1
 				end
 				if settings.downscroll then
 					enemyArrows[i].y = 375
@@ -629,10 +971,6 @@ return {
 					enemyArrows[i].y = -375
 					boyfriendArrows[i].y = -375
 				end
-				holdSplashArrows[i].x = boyfriendArrows[i].x
-				holdSplashArrows[i].y = boyfriendArrows[i].y
-				enemyHoldSplashArrows[i].x = enemyArrows[i].x
-				enemyHoldSplashArrows[i].y = enemyArrows[i].y
 				enemyNotes[i] = {}
 				boyfriendNotes[i] = {}
 			end
@@ -640,7 +978,18 @@ return {
 		-- Cargar loaders default del modo actual (pixel o normal)
 		resetDefaultSplashLoaders()
 
+		-- Alpha FINAL del oponente: 0.35 en middlescroll (superpuesto cerca
+		-- del centro, ver initUI() arriba), 1 en modo normal -- el tween/
+		-- asignación de entrada de abajo apuntaba siempre a 1 sin importar
+		-- middleScroll, pisando el 0.35 ya seteado más arriba.
+		local enemyTargetAlpha = middleScroll and 0.35 or 1
+
 		if not skipArrowStartTween then
+			-- Nota: Psych real solo anima alpha acá (sin desplazamiento de Y).
+			-- Se probó sacar el slide vertical para igualar a Psych al pixel,
+			-- pero el resultado se sentía peor -- se restaura el slide de
+			-- 20px porque es una mejora visual propia de Rewritten que vale
+			-- la pena conservar (caída suave + fade, no solo fade).
 			for i = 1, 4 do
 				local enemyOriginalY = enemyArrows[i].y
 				local boyfriendOriginalY = boyfriendArrows[i].y
@@ -652,13 +1001,13 @@ return {
 				boyfriendArrows[i].y = boyfriendOriginalY - 20
 
 				Timer.after(0.5 + 0.2 * (i-1), function()
-					Timer.tween(1, enemyArrows[i], {alpha = 1, y = enemyOriginalY}, "out-circ")
+					Timer.tween(1, enemyArrows[i], {alpha = enemyTargetAlpha, y = enemyOriginalY}, "out-circ")
 					Timer.tween(1, boyfriendArrows[i], {alpha = 1, y = boyfriendOriginalY}, "out-circ")
 				end)
 			end
 		else
 			for i = 1, 4 do
-				enemyArrows[i].alpha = 1
+				enemyArrows[i].alpha = enemyTargetAlpha
 				boyfriendArrows[i].alpha = 1
 			end
 		end
@@ -704,30 +1053,93 @@ return {
 			table.insert(psychEvents, ev)
 		end
 
+		-- DIAGNÓSTICO TEMPORAL (too-slow): cuenta y lista los nombres de
+		-- evento únicos que realmente llegaron a psychEvents -- para saber
+		-- si el problema es que el chart no trae los eventos nuevos, o si
+		-- los trae pero algo después no los dispara.
+		do
+			local nameCounts = {}
+			for _, ev in ipairs(psychEvents) do
+				nameCounts[ev.name] = (nameCounts[ev.name] or 0) + 1
+			end
+			local parts = {}
+			for name, count in pairs(nameCounts) do
+				table.insert(parts, name .. "x" .. count)
+			end
+			print("[DIAG applyChartMeta] psychEvents total=" .. #psychEvents .. " -> " .. table.concat(parts, ", "))
+		end
+
 		local bfChanged, gfChanged = false, false
 
+		-- BUG corregido: loadStage() (stage.load()) corre ANTES que esto
+		-- (ver weeks/sserafim.lua:enter() -- self:loadStage(...) antes de
+		-- self:load()/initUI()/loadChart()) -- así que cualquier cosa que
+		-- un stage le asigne a boyfriend/girlfriend/enemy en su PROPIO
+		-- M.load() (p.ej. stages/sserafim/stage.lua asignando
+		-- characterShader) se le asigna al sprite VIEJO (de la semana/
+		-- canción anterior, o nil) -- loadInto() de acá ABAJO crea un
+		-- sprite COMPLETAMENTE NUEVO, que nunca recibe esa asignación.
+		-- Resultado: si el sprite previo en _G.boyfriend/girlfriend/enemy
+		-- daba "truthy" justo cuando el stage corrió su asignación, esa
+		-- asignación se pierde silenciosamente -- y como depende de qué
+		-- había ahí antes de entrar a la canción (replay, semana
+		-- anterior, primera vez, etc.) el resultado visual ("a quién le
+		-- aplicó el shader") parece aleatorio entre partidas. Hook opt-in
+		-- (mismo patrón que customNoteHit/customEnemyNoteHit) para que el
+		-- stage pueda re-aplicar lo que necesite DESPUÉS de que el sprite
+		-- real ya esté en su lugar.
 		if meta.player1 then
 			local ok, entry = psychCharacters.loadInto("boyfriend", meta.player1)
 			if ok then
 				bfChanged = true
-				if entry.icon and boyfriendIcon then boyfriendIcon:animate(entry.icon, false) end
+				local iconName = healthIconNameFor(boyfriend, entry.icon)
+				if iconName and boyfriendIcon then icons.animate(boyfriendIcon, iconName, false) end
+				if _G.currentWeek and _G.currentWeek.onCharacterReload then
+					_G.currentWeek:onCharacterReload("boyfriend", boyfriend)
+				end
 			end
 		end
 
 		if meta.player2 then
 			local ok, entry = psychCharacters.loadInto("enemy", meta.player2)
-			if ok and entry.icon and enemyIcon then
-				enemyIcon:animate(entry.icon, false)
+			if ok then
+				local iconName = healthIconNameFor(enemy, entry.icon)
+				if iconName and enemyIcon then
+					icons.animate(enemyIcon, iconName, false)
+				end
+				if _G.currentWeek and _G.currentWeek.onCharacterReload then
+					_G.currentWeek:onCharacterReload("enemy", enemy)
+				end
 			end
 		end
 
 		if meta.gfVersion then
 			if psychCharacters.loadInto("girlfriend", meta.gfVersion) then
 				gfChanged = true
+				if _G.currentWeek and _G.currentWeek.onCharacterReload then
+					_G.currentWeek:onCharacterReload("girlfriend", girlfriend)
+				end
 			end
 		end
 
-		if meta.stage and psychStages.apply(meta.stage) then
+		-- Muchos charts (la mayoría de semana 1-6, no solo "monster"/"south"
+		-- de Skid & Pump) NO declaran "stage" en sus metadatos -- antes,
+		-- sin meta.stage, esta línea nunca se ejecutaba, así que
+		-- psychStages.apply() (que necesita que el personaje YA esté
+		-- cargado para leer sprite._slotConversionX/Y y sprite._charOffsetX/Y
+		-- correctamente, ver charts/psych/stages.lua) nunca se volvía a
+		-- llamar DESPUÉS de loadInto() -- loadStage() ya lo había llamado
+		-- antes, pero en ese momento el personaje real (p.ej. "spooky")
+		-- todavía no existía, así que esa primera llamada no podía
+		-- posicionarlo. Resultado: cualquier personaje con position/offset
+		-- propio no nulo (Skid & Pump, pico-speaker, etc.) quedaba sin la
+		-- posición real del slot del stage sumada -- "descolocado". Usar
+		-- el id del stage YA activo (psychStages.getCurrentId(), puesto
+		-- por loadStage() al principio) en vez de exigir meta.stage
+		-- arregla esto para TODOS los charts, no solo los que declaran
+		-- "stage" explícitamente.
+		local stageToApply = meta.stage or psychStages.getCurrentId()
+		if stageToApply and psychStages.apply(stageToApply) then
 			bfChanged = true
 			gfChanged = true
 		end
@@ -735,13 +1147,9 @@ return {
 		if bfChanged then
 			cam.x, cam.y = bfCamTarget()
 		end
-
-		if gfChanged then
-			rating.x = girlfriend.x
-			for i = 1, 3 do
-				numbers[i].x = girlfriend.x - 100 + 50 * i
-			end
-		end
+		-- El popup de rating/combo ya no depende de girlfriend.x (ver
+		-- ratingSpawnX/numberSpawnX) -- antes acá se reanclaba al cambiar
+		-- de girlfriend, ya no aplica.
 	end,
 
 	generateNotes = function(self, chart)
@@ -835,7 +1243,7 @@ return {
 									psychNoteTypes.apply(newNote, newNote.noteTypeStr)
 								end
 							enemyNotes[id][c].x = x
-							enemyNotes[id][c].y = 375 - noteTime * 0.6 * speed
+							enemyNotes[id][c].y = 375 - noteTime * NOTE_SCROLL_MULT * speed
 							enemyNotes[id][c].strumTime = noteTime
 							enemyNotes[id][c].hit = false
 							enemyNotes[id][c]:animate("on", false)
@@ -848,14 +1256,26 @@ return {
 							end
 
 							if seccion.sectionNotes[j].noteLength > 0 then
-								for k = 71 / speed, seccion.sectionNotes[j].noteLength, 71 / speed do
+								local susLength = seccion.sectionNotes[j].noteLength
+								local stepSize = HOLD_STEP / speed
+								local numSteps = math.floor(susLength / stepSize + 0.5)
+								if numSteps >= 1 then stepSize = susLength / numSteps end
+								for stepIdx = 1, numSteps do
+									local k = stepIdx * stepSize
 									local c = #enemyNotes[id] + 1
 									local newHoldNote = sprite()
 									newHoldNote.sizeX, newHoldNote.sizeY = noteScale, noteScale
 									newHoldNote.noteKind = noteKind
+									-- BUG corregido: las piezas hold/end NUNCA heredaban
+									-- noteTypeStr de la nota cabeza -- stages/sserafim/
+									-- stage.lua:customNoteHold() (y cualquier otro hook
+									-- basado en noteTypeStr) recibía siempre nil acá,
+									-- perdiendo el "kind" (sakura-joint/bf1/bf2) durante
+									-- TODO el sostenido de la nota, no solo en el golpe.
+									newHoldNote.noteTypeStr = seccion.sectionNotes[j].noteTypeStr
 									table.insert(enemyNotes[id], newHoldNote)
 									enemyNotes[id][c].x = x
-									enemyNotes[id][c].y = 375 - (noteTime + k) * 0.6 * speed
+									enemyNotes[id][c].y = 375 - (noteTime + k) * NOTE_SCROLL_MULT * speed
 									enemyNotes[id][c].strumTime = noteTime + k
 									enemyNotes[id][c].hit = false
 									enemyNotes[id][c]:animate("hold", false)
@@ -895,7 +1315,7 @@ return {
 									psychNoteTypes.apply(newNote, newNote.noteTypeStr)
 								end
 							boyfriendNotes[id][c].x = x
-							boyfriendNotes[id][c].y = 375 - noteTime * 0.6 * speed
+							boyfriendNotes[id][c].y = 375 - noteTime * NOTE_SCROLL_MULT * speed
 							boyfriendNotes[id][c].strumTime = noteTime
 							boyfriendNotes[id][c].hit = false
 							boyfriendNotes[id][c]:animate("on", false)
@@ -907,14 +1327,26 @@ return {
 							end
 
 							if seccion.sectionNotes[j].noteLength > 0 then
-								for k = 71 / speed, seccion.sectionNotes[j].noteLength, 71 / speed do
+								local susLength = seccion.sectionNotes[j].noteLength
+								local stepSize = HOLD_STEP / speed
+								local numSteps = math.floor(susLength / stepSize + 0.5)
+								if numSteps >= 1 then stepSize = susLength / numSteps end
+								for stepIdx = 1, numSteps do
+									local k = stepIdx * stepSize
 									local c = #boyfriendNotes[id] + 1
 									local newHoldNote = sprite()
 									newHoldNote.sizeX, newHoldNote.sizeY = noteScale, noteScale
 									newHoldNote.noteKind = noteKind
+									-- BUG corregido: las piezas hold/end NUNCA heredaban
+									-- noteTypeStr de la nota cabeza -- stages/sserafim/
+									-- stage.lua:customNoteHold() (y cualquier otro hook
+									-- basado en noteTypeStr) recibía siempre nil acá,
+									-- perdiendo el "kind" (sakura-joint/bf1/bf2) durante
+									-- TODO el sostenido de la nota, no solo en el golpe.
+									newHoldNote.noteTypeStr = seccion.sectionNotes[j].noteTypeStr
 									table.insert(boyfriendNotes[id], newHoldNote)
 									boyfriendNotes[id][c].x = x
-									boyfriendNotes[id][c].y = 375 - (noteTime + k) * 0.6 * speed
+									boyfriendNotes[id][c].y = 375 - (noteTime + k) * NOTE_SCROLL_MULT * speed
 									boyfriendNotes[id][c].strumTime = noteTime + k
 									boyfriendNotes[id][c].hit = false
 									boyfriendNotes[id][c]:animate("hold", false)
@@ -941,63 +1373,6 @@ return {
 					else
 						if noteType >= 4 then
 							local id = noteType - 3
-							local c = #boyfriendNotes[id] + 1
-							local x = boyfriendArrows[id].x
-
-							local newNote = sprite()
-							newNote.sizeX, newNote.sizeY = noteScale, noteScale
-							newNote.noteKind = noteKind
-							table.insert(boyfriendNotes[id], newNote)
-							newNote.gfNote = seccion.sectionNotes[j].gfNote or false
-								newNote.noteTypeStr = seccion.sectionNotes[j].noteTypeStr
-								newNote.noAnimation = (newNote.noteTypeStr == "No Animation")
-								newNote.isMine = (newNote.noteTypeStr == "Hurt Note")
-								if newNote.noteTypeStr and not BUILTIN_NOTE_TYPES[newNote.noteTypeStr] then
-									psychNoteTypes.apply(newNote, newNote.noteTypeStr)
-								end
-							boyfriendNotes[id][c].x = x
-							boyfriendNotes[id][c].y = 375 - noteTime * 0.6 * speed
-							boyfriendNotes[id][c].strumTime = noteTime
-							boyfriendNotes[id][c].hit = false
-							boyfriendNotes[id][c]:animate("on", false)
-							boyfriendNotes[id][c].altNote = seccion.sectionNotes[j].altNote or false
-							boyfriendNotes[id][c].isHoldStart = (seccion.sectionNotes[j].noteLength > 0) or false
-							if currentHoldGroupId then
-								holdGroupsInfo[currentHoldGroupId].totalNotes = holdGroupsInfo[currentHoldGroupId].totalNotes + 1
-								newNote.holdGroupId = currentHoldGroupId
-							end
-
-							if seccion.sectionNotes[j].noteLength > 0 then
-								for k = 71 / speed, seccion.sectionNotes[j].noteLength, 71 / speed do
-									local c = #boyfriendNotes[id] + 1
-									local newHoldNote = sprite()
-									newHoldNote.sizeX, newHoldNote.sizeY = noteScale, noteScale
-									newHoldNote.noteKind = noteKind
-									table.insert(boyfriendNotes[id], newHoldNote)
-									boyfriendNotes[id][c].x = x
-									boyfriendNotes[id][c].y = 375 - (noteTime + k) * 0.6 * speed
-									boyfriendNotes[id][c].strumTime = noteTime + k
-									boyfriendNotes[id][c].hit = false
-									boyfriendNotes[id][c]:animate("hold", false)
-									boyfriendNotes[id][c].altNote = seccion.sectionNotes[j].altNote or false
-									boyfriendNotes[id][c].isHoldStart = false
-									if currentHoldGroupId then
-										holdGroupsInfo[currentHoldGroupId].totalNotes = holdGroupsInfo[currentHoldGroupId].totalNotes + 1
-										newHoldNote.holdGroupId = currentHoldGroupId
-									end
-								end
-
-								c = #boyfriendNotes[id]
-								boyfriendNotes[id][c].y = boyfriendNotes[id][c].y - endNoteYOffset
-								boyfriendNotes[id][c].offsetY = -10
-								boyfriendNotes[id][c].sizeY = -noteScale
-								boyfriendNotes[id][c]:animate("end", false)
-								boyfriendNotes[id][c].altNote = seccion.sectionNotes[j].altNote or false
-								boyfriendNotes[id][c].isHoldStart = false
-								if currentHoldGroupId then end
-							end
-						else
-							local id = noteType + 1
 							local c = #enemyNotes[id] + 1
 							local x = enemyArrows[id].x
 
@@ -1013,7 +1388,7 @@ return {
 									psychNoteTypes.apply(newNote, newNote.noteTypeStr)
 								end
 							enemyNotes[id][c].x = x
-							enemyNotes[id][c].y = 375 - noteTime * 0.6 * speed
+							enemyNotes[id][c].y = 375 - noteTime * NOTE_SCROLL_MULT * speed
 							enemyNotes[id][c].strumTime = noteTime
 							enemyNotes[id][c].hit = false
 							enemyNotes[id][c]:animate("on", false)
@@ -1025,14 +1400,26 @@ return {
 							end
 
 							if seccion.sectionNotes[j].noteLength > 0 then
-								for k = 71 / speed, seccion.sectionNotes[j].noteLength, 71 / speed do
+								local susLength = seccion.sectionNotes[j].noteLength
+								local stepSize = HOLD_STEP / speed
+								local numSteps = math.floor(susLength / stepSize + 0.5)
+								if numSteps >= 1 then stepSize = susLength / numSteps end
+								for stepIdx = 1, numSteps do
+									local k = stepIdx * stepSize
 									local c = #enemyNotes[id] + 1
 									local newHoldNote = sprite()
 									newHoldNote.sizeX, newHoldNote.sizeY = noteScale, noteScale
 									newHoldNote.noteKind = noteKind
+									-- BUG corregido: las piezas hold/end NUNCA heredaban
+									-- noteTypeStr de la nota cabeza -- stages/sserafim/
+									-- stage.lua:customNoteHold() (y cualquier otro hook
+									-- basado en noteTypeStr) recibía siempre nil acá,
+									-- perdiendo el "kind" (sakura-joint/bf1/bf2) durante
+									-- TODO el sostenido de la nota, no solo en el golpe.
+									newHoldNote.noteTypeStr = seccion.sectionNotes[j].noteTypeStr
 									table.insert(enemyNotes[id], newHoldNote)
 									enemyNotes[id][c].x = x
-									enemyNotes[id][c].y = 375 - (noteTime + k) * 0.6 * speed
+									enemyNotes[id][c].y = 375 - (noteTime + k) * NOTE_SCROLL_MULT * speed
 									enemyNotes[id][c].strumTime = noteTime + k
 									enemyNotes[id][c].hit = false
 									enemyNotes[id][c]:animate("hold", false)
@@ -1049,8 +1436,77 @@ return {
 								enemyNotes[id][c].offsetY = -10
 								enemyNotes[id][c].sizeY = -noteScale
 								enemyNotes[id][c]:animate("end", false)
-								enemyNotes[id][c].altNote = seccion.sectionNotes[j].altNote or false 
+								enemyNotes[id][c].altNote = seccion.sectionNotes[j].altNote or false
 								enemyNotes[id][c].isHoldStart = false
+								if currentHoldGroupId then end
+							end
+						else
+							local id = noteType + 1
+							local c = #boyfriendNotes[id] + 1
+							local x = boyfriendArrows[id].x
+
+							local newNote = sprite()
+							newNote.sizeX, newNote.sizeY = noteScale, noteScale
+							newNote.noteKind = noteKind
+							table.insert(boyfriendNotes[id], newNote)
+							newNote.gfNote = seccion.sectionNotes[j].gfNote or false
+								newNote.noteTypeStr = seccion.sectionNotes[j].noteTypeStr
+								newNote.noAnimation = (newNote.noteTypeStr == "No Animation")
+								newNote.isMine = (newNote.noteTypeStr == "Hurt Note")
+								if newNote.noteTypeStr and not BUILTIN_NOTE_TYPES[newNote.noteTypeStr] then
+									psychNoteTypes.apply(newNote, newNote.noteTypeStr)
+								end
+							boyfriendNotes[id][c].x = x
+							boyfriendNotes[id][c].y = 375 - noteTime * NOTE_SCROLL_MULT * speed
+							boyfriendNotes[id][c].strumTime = noteTime
+							boyfriendNotes[id][c].hit = false
+							boyfriendNotes[id][c]:animate("on", false)
+							boyfriendNotes[id][c].altNote = seccion.sectionNotes[j].altNote or false
+							boyfriendNotes[id][c].isHoldStart = (seccion.sectionNotes[j].noteLength > 0) or false
+							if currentHoldGroupId then
+								holdGroupsInfo[currentHoldGroupId].totalNotes = holdGroupsInfo[currentHoldGroupId].totalNotes + 1
+								newNote.holdGroupId = currentHoldGroupId
+							end
+
+							if seccion.sectionNotes[j].noteLength > 0 then
+								local susLength = seccion.sectionNotes[j].noteLength
+								local stepSize = HOLD_STEP / speed
+								local numSteps = math.floor(susLength / stepSize + 0.5)
+								if numSteps >= 1 then stepSize = susLength / numSteps end
+								for stepIdx = 1, numSteps do
+									local k = stepIdx * stepSize
+									local c = #boyfriendNotes[id] + 1
+									local newHoldNote = sprite()
+									newHoldNote.sizeX, newHoldNote.sizeY = noteScale, noteScale
+									newHoldNote.noteKind = noteKind
+									-- BUG corregido: las piezas hold/end NUNCA heredaban
+									-- noteTypeStr de la nota cabeza -- stages/sserafim/
+									-- stage.lua:customNoteHold() (y cualquier otro hook
+									-- basado en noteTypeStr) recibía siempre nil acá,
+									-- perdiendo el "kind" (sakura-joint/bf1/bf2) durante
+									-- TODO el sostenido de la nota, no solo en el golpe.
+									newHoldNote.noteTypeStr = seccion.sectionNotes[j].noteTypeStr
+									table.insert(boyfriendNotes[id], newHoldNote)
+									boyfriendNotes[id][c].x = x
+									boyfriendNotes[id][c].y = 375 - (noteTime + k) * NOTE_SCROLL_MULT * speed
+									boyfriendNotes[id][c].strumTime = noteTime + k
+									boyfriendNotes[id][c].hit = false
+									boyfriendNotes[id][c]:animate("hold", false)
+									boyfriendNotes[id][c].altNote = seccion.sectionNotes[j].altNote or false
+									boyfriendNotes[id][c].isHoldStart = false
+									if currentHoldGroupId then
+										holdGroupsInfo[currentHoldGroupId].totalNotes = holdGroupsInfo[currentHoldGroupId].totalNotes + 1
+										newHoldNote.holdGroupId = currentHoldGroupId
+									end
+								end
+
+								c = #boyfriendNotes[id]
+								boyfriendNotes[id][c].y = boyfriendNotes[id][c].y - endNoteYOffset
+								boyfriendNotes[id][c].offsetY = -10
+								boyfriendNotes[id][c].sizeY = -noteScale
+								boyfriendNotes[id][c]:animate("end", false)
+								boyfriendNotes[id][c].altNote = seccion.sectionNotes[j].altNote or false 
+								boyfriendNotes[id][c].isHoldStart = false
 								if currentHoldGroupId then end
 							end
 						end
@@ -1074,7 +1530,7 @@ return {
 									psychNoteTypes.apply(newNote, newNote.noteTypeStr)
 								end
 							enemyNotes[id][c].x = x
-							enemyNotes[id][c].y = -375 + noteTime * 0.6 * speed
+							enemyNotes[id][c].y = -375 + noteTime * NOTE_SCROLL_MULT * speed
 							enemyNotes[id][c].strumTime = noteTime
 							enemyNotes[id][c].hit = false
 							enemyNotes[id][c]:animate("on", false)
@@ -1086,14 +1542,26 @@ return {
 							end
 
 							if seccion.sectionNotes[j].noteLength > 0 then
-								for k = 71 / speed, seccion.sectionNotes[j].noteLength, 71 / speed do
+								local susLength = seccion.sectionNotes[j].noteLength
+								local stepSize = HOLD_STEP / speed
+								local numSteps = math.floor(susLength / stepSize + 0.5)
+								if numSteps >= 1 then stepSize = susLength / numSteps end
+								for stepIdx = 1, numSteps do
+									local k = stepIdx * stepSize
 									local c = #enemyNotes[id] + 1
 									local newHoldNote = sprite()
 									newHoldNote.sizeX, newHoldNote.sizeY = noteScale, noteScale
 									newHoldNote.noteKind = noteKind
+									-- BUG corregido: las piezas hold/end NUNCA heredaban
+									-- noteTypeStr de la nota cabeza -- stages/sserafim/
+									-- stage.lua:customNoteHold() (y cualquier otro hook
+									-- basado en noteTypeStr) recibía siempre nil acá,
+									-- perdiendo el "kind" (sakura-joint/bf1/bf2) durante
+									-- TODO el sostenido de la nota, no solo en el golpe.
+									newHoldNote.noteTypeStr = seccion.sectionNotes[j].noteTypeStr
 									table.insert(enemyNotes[id], newHoldNote)
 									enemyNotes[id][c].x = x
-									enemyNotes[id][c].y = -375 + (noteTime + k) * 0.6 * speed
+									enemyNotes[id][c].y = -375 + (noteTime + k) * NOTE_SCROLL_MULT * speed
 									enemyNotes[id][c].strumTime = noteTime + k
 									enemyNotes[id][c].hit = false
 									enemyNotes[id][c]:animate("hold", false)
@@ -1130,7 +1598,7 @@ return {
 									psychNoteTypes.apply(newNote, newNote.noteTypeStr)
 								end
 							boyfriendNotes[id][c].x = x
-							boyfriendNotes[id][c].y = -375 + noteTime * 0.6 * speed
+							boyfriendNotes[id][c].y = -375 + noteTime * NOTE_SCROLL_MULT * speed
 							boyfriendNotes[id][c].strumTime = noteTime
 							boyfriendNotes[id][c].hit = false
 							boyfriendNotes[id][c]:animate("on", false)
@@ -1142,14 +1610,26 @@ return {
 							end
 
 							if seccion.sectionNotes[j].noteLength > 0 then
-								for k = 71 / speed, seccion.sectionNotes[j].noteLength, 71 / speed do
+								local susLength = seccion.sectionNotes[j].noteLength
+								local stepSize = HOLD_STEP / speed
+								local numSteps = math.floor(susLength / stepSize + 0.5)
+								if numSteps >= 1 then stepSize = susLength / numSteps end
+								for stepIdx = 1, numSteps do
+									local k = stepIdx * stepSize
 									local c = #boyfriendNotes[id] + 1
 									local newHoldNote = sprite()
 									newHoldNote.sizeX, newHoldNote.sizeY = noteScale, noteScale
 									newHoldNote.noteKind = noteKind
+									-- BUG corregido: las piezas hold/end NUNCA heredaban
+									-- noteTypeStr de la nota cabeza -- stages/sserafim/
+									-- stage.lua:customNoteHold() (y cualquier otro hook
+									-- basado en noteTypeStr) recibía siempre nil acá,
+									-- perdiendo el "kind" (sakura-joint/bf1/bf2) durante
+									-- TODO el sostenido de la nota, no solo en el golpe.
+									newHoldNote.noteTypeStr = seccion.sectionNotes[j].noteTypeStr
 									table.insert(boyfriendNotes[id], newHoldNote)
 									boyfriendNotes[id][c].x = x
-									boyfriendNotes[id][c].y = -375 + (noteTime + k) * 0.6 * speed
+									boyfriendNotes[id][c].y = -375 + (noteTime + k) * NOTE_SCROLL_MULT * speed
 									boyfriendNotes[id][c].strumTime = noteTime + k
 									boyfriendNotes[id][c].hit = false
 									boyfriendNotes[id][c]:animate("hold", false)
@@ -1173,62 +1653,6 @@ return {
 					else
 						if noteType >= 4 then
 							local id = noteType - 3
-							local c = #boyfriendNotes[id] + 1
-							local x = boyfriendArrows[id].x
-
-							local newNote = sprite()
-							newNote.sizeX, newNote.sizeY = noteScale, noteScale
-							newNote.noteKind = noteKind
-							table.insert(boyfriendNotes[id], newNote)
-							newNote.gfNote = seccion.sectionNotes[j].gfNote or false
-								newNote.noteTypeStr = seccion.sectionNotes[j].noteTypeStr
-								newNote.noAnimation = (newNote.noteTypeStr == "No Animation")
-								newNote.isMine = (newNote.noteTypeStr == "Hurt Note")
-								if newNote.noteTypeStr and not BUILTIN_NOTE_TYPES[newNote.noteTypeStr] then
-									psychNoteTypes.apply(newNote, newNote.noteTypeStr)
-								end
-							boyfriendNotes[id][c].x = x
-							boyfriendNotes[id][c].y = -375 + noteTime * 0.6 * speed
-							boyfriendNotes[id][c].strumTime = noteTime
-							boyfriendNotes[id][c].hit = false
-							boyfriendNotes[id][c]:animate("on", false)
-							boyfriendNotes[id][c].altNote = seccion.sectionNotes[j].altNote or false
-							boyfriendNotes[id][c].isHoldStart = (seccion.sectionNotes[j].noteLength > 0) or false
-							if currentHoldGroupId then
-								holdGroupsInfo[currentHoldGroupId].totalNotes = holdGroupsInfo[currentHoldGroupId].totalNotes + 1
-								newNote.holdGroupId = currentHoldGroupId
-							end
-
-							if seccion.sectionNotes[j].noteLength > 0 then
-								for k = 71 / speed, seccion.sectionNotes[j].noteLength, 71 / speed do
-									local c = #boyfriendNotes[id] + 1
-									local newHoldNote = sprite()
-									newHoldNote.sizeX, newHoldNote.sizeY = noteScale, noteScale
-									newHoldNote.noteKind = noteKind
-									table.insert(boyfriendNotes[id], newHoldNote)
-									boyfriendNotes[id][c].x = x
-									boyfriendNotes[id][c].y = -375 + (noteTime + k) * 0.6 * speed
-									boyfriendNotes[id][c].strumTime = noteTime + k
-									boyfriendNotes[id][c].hit = false
-									boyfriendNotes[id][c]:animate("hold", false)
-									boyfriendNotes[id][c].altNote = seccion.sectionNotes[j].altNote or false
-									boyfriendNotes[id][c].isHoldStart = false
-									if currentHoldGroupId then
-										holdGroupsInfo[currentHoldGroupId].totalNotes = holdGroupsInfo[currentHoldGroupId].totalNotes + 1
-										newHoldNote.holdGroupId = currentHoldGroupId
-									end
-								end
-
-								c = #boyfriendNotes[id]
-								boyfriendNotes[id][c].y = boyfriendNotes[id][c].y + endNoteYOffset
-								boyfriendNotes[id][c].offsetY = -10
-								boyfriendNotes[id][c]:animate("end", false)
-								boyfriendNotes[id][c].altNote = seccion.sectionNotes[j].altNote or false
-								boyfriendNotes[id][c].isHoldStart = false
-								if currentHoldGroupId then end
-							end
-						else
-							local id = noteType + 1
 							local c = #enemyNotes[id] + 1
 							local x = enemyArrows[id].x
 
@@ -1244,7 +1668,7 @@ return {
 									psychNoteTypes.apply(newNote, newNote.noteTypeStr)
 								end
 							enemyNotes[id][c].x = x
-							enemyNotes[id][c].y = -375 + noteTime * 0.6 * speed
+							enemyNotes[id][c].y = -375 + noteTime * NOTE_SCROLL_MULT * speed
 							enemyNotes[id][c].strumTime = noteTime
 							enemyNotes[id][c].hit = false
 							enemyNotes[id][c]:animate("on", false)
@@ -1256,18 +1680,30 @@ return {
 							end
 
 							if seccion.sectionNotes[j].noteLength > 0 then
-								for k = 71 / speed, seccion.sectionNotes[j].noteLength, 71 / speed do
+								local susLength = seccion.sectionNotes[j].noteLength
+								local stepSize = HOLD_STEP / speed
+								local numSteps = math.floor(susLength / stepSize + 0.5)
+								if numSteps >= 1 then stepSize = susLength / numSteps end
+								for stepIdx = 1, numSteps do
+									local k = stepIdx * stepSize
 									local c = #enemyNotes[id] + 1
 									local newHoldNote = sprite()
 									newHoldNote.sizeX, newHoldNote.sizeY = noteScale, noteScale
 									newHoldNote.noteKind = noteKind
+									-- BUG corregido: las piezas hold/end NUNCA heredaban
+									-- noteTypeStr de la nota cabeza -- stages/sserafim/
+									-- stage.lua:customNoteHold() (y cualquier otro hook
+									-- basado en noteTypeStr) recibía siempre nil acá,
+									-- perdiendo el "kind" (sakura-joint/bf1/bf2) durante
+									-- TODO el sostenido de la nota, no solo en el golpe.
+									newHoldNote.noteTypeStr = seccion.sectionNotes[j].noteTypeStr
 									table.insert(enemyNotes[id], newHoldNote)
 									enemyNotes[id][c].x = x
-									enemyNotes[id][c].y = -375 + (noteTime + k) * 0.6 * speed
+									enemyNotes[id][c].y = -375 + (noteTime + k) * NOTE_SCROLL_MULT * speed
 									enemyNotes[id][c].strumTime = noteTime + k
 									enemyNotes[id][c].hit = false
 									enemyNotes[id][c]:animate("hold", false)
-									enemyNotes[id][c].altNote = seccion.sectionNotes[j].altNote or false 
+									enemyNotes[id][c].altNote = seccion.sectionNotes[j].altNote or false
 									enemyNotes[id][c].isHoldStart = false
 									if currentHoldGroupId then
 										holdGroupsInfo[currentHoldGroupId].totalNotes = holdGroupsInfo[currentHoldGroupId].totalNotes + 1
@@ -1278,10 +1714,78 @@ return {
 								c = #enemyNotes[id]
 								enemyNotes[id][c].y = enemyNotes[id][c].y + endNoteYOffset
 								enemyNotes[id][c].offsetY = -10
-								-- upscroll: sizeY queda positivo (igual que los otros bloques upscroll)
 								enemyNotes[id][c]:animate("end", false)
-								enemyNotes[id][c].altNote = seccion.sectionNotes[j].altNote or false 
+								enemyNotes[id][c].altNote = seccion.sectionNotes[j].altNote or false
 								enemyNotes[id][c].isHoldStart = false
+								if currentHoldGroupId then end
+							end
+						else
+							local id = noteType + 1
+							local c = #boyfriendNotes[id] + 1
+							local x = boyfriendArrows[id].x
+
+							local newNote = sprite()
+							newNote.sizeX, newNote.sizeY = noteScale, noteScale
+							newNote.noteKind = noteKind
+							table.insert(boyfriendNotes[id], newNote)
+							newNote.gfNote = seccion.sectionNotes[j].gfNote or false
+								newNote.noteTypeStr = seccion.sectionNotes[j].noteTypeStr
+								newNote.noAnimation = (newNote.noteTypeStr == "No Animation")
+								newNote.isMine = (newNote.noteTypeStr == "Hurt Note")
+								if newNote.noteTypeStr and not BUILTIN_NOTE_TYPES[newNote.noteTypeStr] then
+									psychNoteTypes.apply(newNote, newNote.noteTypeStr)
+								end
+							boyfriendNotes[id][c].x = x
+							boyfriendNotes[id][c].y = -375 + noteTime * NOTE_SCROLL_MULT * speed
+							boyfriendNotes[id][c].strumTime = noteTime
+							boyfriendNotes[id][c].hit = false
+							boyfriendNotes[id][c]:animate("on", false)
+							boyfriendNotes[id][c].altNote = seccion.sectionNotes[j].altNote or false
+							boyfriendNotes[id][c].isHoldStart = (seccion.sectionNotes[j].noteLength > 0) or false
+							if currentHoldGroupId then
+								holdGroupsInfo[currentHoldGroupId].totalNotes = holdGroupsInfo[currentHoldGroupId].totalNotes + 1
+								newNote.holdGroupId = currentHoldGroupId
+							end
+
+							if seccion.sectionNotes[j].noteLength > 0 then
+								local susLength = seccion.sectionNotes[j].noteLength
+								local stepSize = HOLD_STEP / speed
+								local numSteps = math.floor(susLength / stepSize + 0.5)
+								if numSteps >= 1 then stepSize = susLength / numSteps end
+								for stepIdx = 1, numSteps do
+									local k = stepIdx * stepSize
+									local c = #boyfriendNotes[id] + 1
+									local newHoldNote = sprite()
+									newHoldNote.sizeX, newHoldNote.sizeY = noteScale, noteScale
+									newHoldNote.noteKind = noteKind
+									-- BUG corregido: las piezas hold/end NUNCA heredaban
+									-- noteTypeStr de la nota cabeza -- stages/sserafim/
+									-- stage.lua:customNoteHold() (y cualquier otro hook
+									-- basado en noteTypeStr) recibía siempre nil acá,
+									-- perdiendo el "kind" (sakura-joint/bf1/bf2) durante
+									-- TODO el sostenido de la nota, no solo en el golpe.
+									newHoldNote.noteTypeStr = seccion.sectionNotes[j].noteTypeStr
+									table.insert(boyfriendNotes[id], newHoldNote)
+									boyfriendNotes[id][c].x = x
+									boyfriendNotes[id][c].y = -375 + (noteTime + k) * NOTE_SCROLL_MULT * speed
+									boyfriendNotes[id][c].strumTime = noteTime + k
+									boyfriendNotes[id][c].hit = false
+									boyfriendNotes[id][c]:animate("hold", false)
+									boyfriendNotes[id][c].altNote = seccion.sectionNotes[j].altNote or false 
+									boyfriendNotes[id][c].isHoldStart = false
+									if currentHoldGroupId then
+										holdGroupsInfo[currentHoldGroupId].totalNotes = holdGroupsInfo[currentHoldGroupId].totalNotes + 1
+										newHoldNote.holdGroupId = currentHoldGroupId
+									end
+								end
+
+								c = #boyfriendNotes[id]
+								boyfriendNotes[id][c].y = boyfriendNotes[id][c].y + endNoteYOffset
+								boyfriendNotes[id][c].offsetY = -10
+								-- upscroll: sizeY queda positivo (igual que los otros bloques upscroll)
+								boyfriendNotes[id][c]:animate("end", false)
+								boyfriendNotes[id][c].altNote = seccion.sectionNotes[j].altNote or false 
+								boyfriendNotes[id][c].isHoldStart = false
 								if currentHoldGroupId then end
 							end
 						end
@@ -1469,42 +1973,45 @@ return {
 		end
 
 		sprite:animate(animName, loopAnim)
-		if sprite.isTankman and animName == "down alt" then
-			local animDef = sprite.anims[animName]
-			local duration = (animDef.stop - animDef.start + 1) / animDef.speed
-			if enemyTimer then Timer.cancel(enemyTimer) end
-			enemyTimer = Timer.after(duration, function()
-				if enemy and enemy:getAnimName() == "down alt" then
-					enemy:animate("idle", false)
-				end
-			end)
-			spriteTimers[timerID] = 999999
-		elseif sprite.isSonicEXE and animName == "left alt" then
-			local animDef = sprite.anims[animName]
-			local duration = (animDef.stop - animDef.start + 1) / animDef.speed
-			if enemyTimer then Timer.cancel(enemyTimer) end
-			enemyTimer = Timer.after(duration, function()
-				if enemy and enemy:getAnimName() == "left alt" then
-					enemy:animate("idle", false)
-				end
-			end)
-			spriteTimers[timerID] = 999999	
-		elseif sprite.isSonicYCR and animName == "up alt" then
-			local animDef = sprite.anims[animName]
-			local duration = (animDef.stop - animDef.start + 1) / animDef.speed
-			if enemyTimer then Timer.cancel(enemyTimer) end
-			enemyTimer = Timer.after(duration, function()
-				if enemy and enemy:getAnimName() == "up alt" then
-					enemy:animate("idle", false)
-				end
-			end)
-			spriteTimers[timerID] = 999999	
-		else
-			spriteTimers[timerID] = 12
+
+		-- Una animación en LOOP (notas hold) nunca se corta sola -- si
+		-- después del último frame de hold no llega ninguna nota nueva
+		-- (corte de sección, último hold de la canción, etc.), el
+		-- personaje se queda animando ese frame en bucle indefinidamente
+		-- hasta que el countdown genérico de abajo (12 beats) lo libere.
+		-- Programamos un corte a fuerza de vuelta a "idle" una sola vez
+		-- transcurrida la duración NATURAL del clip -- si llega una nota
+		-- nueva antes (otro safeAnimate la cancela y reprograma), no pasa
+		-- nada; si la animación ya cambió por otro lado para entonces,
+		-- tampoco (el chequeo getAnimName()==animName lo evita).
+		if loopAnim then
+			local animDef = sprite.anims and sprite.anims[animName]
+			if animDef and animDef.speed and animDef.speed > 0 then
+				local duration = (animDef.stop - animDef.start + 1) / animDef.speed
+				if spriteLoopTimers[timerID] then Timer.cancel(spriteLoopTimers[timerID]) end
+				spriteLoopTimers[timerID] = Timer.after(duration, function()
+					spriteLoopTimers[timerID] = nil
+					if sprite:getAnimName() == animName then
+						sprite:animate("idle", false)
+					end
+				end)
+			end
 		end
+
+		spriteTimers[timerID] = 12
 	end,
 
     update = function(self, dt)
+            -- _G.cutscenePause (cutscenes de intro de historia, p.ej.
+            -- stages/military/stage.lua): congela TODO -- musicTime no
+            -- avanza ni con el reloj real (la rama "else" de abajo lo
+            -- hace incluso con countingDown=false, que es exactamente el
+            -- estado durante una cutscene -- sin este freeze, el chart
+            -- "arranca solo" en segundo plano mientras la cutscene corre,
+            -- y bf puede morir por notas falladas que nunca debieron
+            -- existir todavía).
+            if _G.cutscenePause then return end
+
             oldMusicThres = musicThres
 			if countingDown or love.system.getOS() == "Web" then
 				musicTime = musicTime + 1000 * dt
@@ -1540,11 +2047,30 @@ return {
                         if not bpm then bpm = oldBpm end
                     end
 
-					if camTimer and not _G.disableAutoCam then
-						Timer.cancel(camTimer)
-					end
+					-- BUG real (bamboleo de cámara al soltar el shake, ronda
+					-- anterior): currentMustHit solo se actualizaba acá
+					-- DENTRO del "if not _G.disableAutoCam" -- si un cambio
+					-- de sección caía justo durante el shake (disableAutoCam
+					-- en true por entonces), el evento se consumía
+					-- (table.remove más abajo) pero currentMustHit quedaba
+					-- desactualizado para SIEMPRE (el evento ya no está en
+					-- la lista para reintentarlo). Ahora currentMustHit se
+					-- actualiza SIEMPRE (nunca queda obsoleto); solo la
+					-- creación/cancelación del camTimer se sigue salteando
+					-- mientras está desactivada la cámara automática.
+					-- (Highlight ya no entra en este problema: ya no toca la
+					-- cámara para nada, ver setHighlight() más abajo.)
+					currentMustHit = events[i].mustHitSection or false
+					-- Expuesto en la tabla compartida `weeks` (global) para
+					-- que stages/*/stage.lua puedan leer de quién es el
+					-- turno sin acceso directo a este local -- ningún otro
+					-- stage lo necesitó hasta Weekend1 (A-Bot mirando a
+					-- quien canta).
+					weeks.currentMustHit = currentMustHit
 					if not _G.disableAutoCam then
-						currentMustHit = events[i].mustHitSection or false
+						if camTimer then
+							Timer.cancel(camTimer)
+						end
 						if currentMustHit then
 							local tx, ty = bfCamTarget()
 							camTimer = Timer.tween(1.25, cam, {x = tx, y = ty}, "out-quad")
@@ -1575,47 +2101,24 @@ return {
 						spoopyscare.trigger()
 						table.remove(cameraEvents, i)
 					elseif ev.type == "HighlightOn" then
-						-- Activar highlight
-						highlightActive = true
-						highlightTarget = ev.target or "enemy"
-						currentMustHit = events[1] and events[1].mustHitSection or false
+						-- Highlight: SOLO oculta el HUD/GUI (fade de guiAlphaObj).
+						-- Ya NO toca la cámara para nada -- antes tweemeaba
+						-- cam.x/y hacia bf/enemy y suspendía el auto-cam
+						-- (highlightActive) mientras durase, lo que competía
+						-- con el seguimiento normal y causaba bamboleo al
+						-- soltar. A pedido: el evento queda reducido a
+						-- activar/desactivar la HUD nomás.
 						if guiAlphaTween then Timer.cancel(guiAlphaTween) end
 						guiAlphaTween = Timer.tween(0.5, guiAlphaObj, {value = 0}, "linear", function() guiAlphaTween = nil end)
-						if highlightCamTimer then Timer.cancel(highlightCamTimer) end
-						local targetX, targetY
-						if highlightTarget == "enemy" then
-							targetX, targetY = enemyCamTarget()
-						else
-							targetX, targetY = bfCamTarget()
-						end
-						highlightCamTimer = Timer.tween(1.25, cam, {x = targetX, y = targetY}, "out-quad", function() highlightCamTimer = nil end)
 						table.remove(cameraEvents, i)
 					elseif ev.type == "HighlightOff" then
-						highlightActive = false
-						highlightTarget = nil
 						if guiAlphaTween then Timer.cancel(guiAlphaTween) end
 						guiAlphaTween = Timer.tween(0.5, guiAlphaObj, {value = 1}, "linear", function() guiAlphaTween = nil end)
-						if highlightCamTimer then Timer.cancel(highlightCamTimer); highlightCamTimer = nil end
-						if camTimer then Timer.cancel(camTimer) end
-						local currentSectionMustHit = false
-						for j = 1, #events do
-							if events[j].eventTime <= musicTime then
-								currentSectionMustHit = events[j].mustHitSection or false
-							end
-						end
-						if currentSectionMustHit then
-							local tx, ty = bfCamTarget()
-							camTimer = Timer.tween(1.25, cam, {x = tx, y = ty}, "out-quad")
-						else
-							local tx, ty = enemyCamTarget()
-							camTimer = Timer.tween(1.25, cam, {x = tx, y = ty}, "out-quad")
-						end
 						table.remove(cameraEvents, i)
-
-						end
 						-- No se eliminan eventos de tipo desconocido
 					end
 				end
+			end
 
 			-- Eventos de chart Psych (Hey!, Play Animation, Change Character, ...)
 			for i = #psychEvents, 1, -1 do
@@ -1687,7 +2190,9 @@ return {
 			-- al personaje correcto (necesario cuando los personajes cambian de posición,
 			-- como en you-cant-run al cambiar de personaje).
 			-- El cancel+recreate cada frame es intencional: garantiza seguimiento inmediato.
-			if not _G.disableAutoCam and not highlightActive then
+			-- Highlight ya NO suspende esto (ver setHighlight() más abajo) --
+			-- el auto-cam corre siempre, Highlight solo afecta al HUD.
+			if not _G.disableAutoCam then
 				if camTimer then Timer.cancel(camTimer) end
 				local tx, ty
 				if currentMustHit then
@@ -1702,6 +2207,7 @@ return {
             enemy:update(dt)
             boyfriend:update(dt)
 			spoopyscare.update(dt)
+			jumpscare.update(dt)
 
 			-- Actualizar splashes activos; eliminar los que terminaron su animación
 			for i = 1, 4 do
@@ -1714,62 +2220,14 @@ return {
 				end
 				activeSplashes[i] = keep
 			end
-			for i = 1, 4 do
-				if holdSplashVisible[i] then
-					holdSplashArrows[i]:update(dt)
-					if not holdSplashArrows[i]:isAnimated() and holdSplashArrows[i]:getAnimName() == "end" then
-						holdSplashVisible[i] = false
-					end
-				end
-			end
-			for i = 1, 4 do
-				if enemyHoldSplashVisible[i] then
-					enemyHoldSplashArrows[i]:update(dt)
-					if not enemyHoldSplashArrows[i]:isAnimated() and enemyHoldSplashArrows[i]:getAnimName() == "end" then
-						enemyHoldSplashVisible[i] = false
-					end
-				end
-			end
 
-			if musicThres ~= oldMusicThres and math.fmod(absMusicTime, (60000 / bpm) * gfDanceBeats) < 100 then
-				if not customGirlfriendIdle then
-					if spriteTimers[1] == 0 then
-						-- No interrumpir "sad" (Mom) ni "hairBlow"/"hairFall"
-						-- (Philly, tren pasando) si aún están animándose --
-						-- mismo patrón que "scared" para enemy/boyfriend más
-						-- abajo (lightning strike de Spooky).
-						local gfAnim = girlfriend:getAnimName()
-						local gfSpecial = gfAnim == "sad" or gfAnim == "hairBlow" or gfAnim == "hairFall"
-						if not (gfSpecial and girlfriend:isAnimated()) then
-							local gfAnims = girlfriend:getAnims()
-							if gfAnims["danceLeft"] and gfAnims["danceRight"] then
-								gfDanceLeft = not gfDanceLeft
-								girlfriend:animate(gfDanceLeft and "danceLeft" or "danceRight", false)
-							elseif gfAnims["idle"] then
-								girlfriend:animate("idle", false)
-								girlfriend:setAnimSpeed(14.4 / (60 / bpm))
-							end
-							-- Si no tiene "idle" ni danceLeft/danceRight (p.ej.
-							-- pico-speaker, que solo tiene shoot*/shoot*-loop),
-							-- no tocar nada: no hay con qué "bailar" y forzar
-							-- setAnimSpeed encima de su animación real (el loop
-							-- de disparo) la dejaría sonando/jugando a velocidad
-							-- equivocada.
-						end
-					end
-				end
-				if spriteTimers[2] == 0 then
-					local enemyAnim = enemy:getAnimName()
-					if not (enemyAnim == "scared" and enemy:isAnimated()) then
-						enemyDanceLeft = danceOrIdle(enemy, enemyDanceLeft)
-					end
-				end
-				if spriteTimers[3] == 0 then
-					local bfAnim = boyfriend:getAnimName()
-					if not (bfAnim == "scared" and boyfriend:isAnimated()) then
-						boyfriendDanceLeft = danceOrIdle(boyfriend, boyfriendDanceLeft)
-					end
-				end
+			-- Antes filtraba acá afuera con "*gfDanceBeats" (un solo
+			-- divisor para los 3 personajes). Ahora se llama CADA beat
+			-- real -- triggerDanceBeat() filtra adentro, por personaje,
+			-- según si cada uno tiene danceLeft/danceRight (ver su
+			-- definición más arriba).
+			if musicThres ~= oldMusicThres and math.fmod(absMusicTime, (60000 / bpm)) < 100 then
+				triggerDanceBeat()
 			end
 
 			for i = 1, 3 do
@@ -1781,6 +2239,18 @@ return {
     end,
 
 	updateUI = function(self, dt)
+		-- _G.cutscenePause: congela ESTO también, no solo update(). musicPos
+		-- se recalcula acá mismo a partir de musicTime en CADA llamada --
+		-- aunque musicTime esté congelado por update(), si su valor
+		-- congelado ya alcanza/pasa el tiempo de la primera nota del chart
+		-- (p.ej. una nota en t≈0 y musicTime congelado en ≈0), el chequeo
+		-- de "¿la nota ya pasó la línea?" de más abajo se cumple UNA VEZ,
+		-- en el primer frame congelado, y dispara la animación de esa nota
+		-- (enemy cantando) mucho antes de que la cutscene o el resto del
+		-- chart arranquen. Sin este freeze, congelar solo update() no
+		-- alcanza.
+		if _G.cutscenePause then return end
+
 		-- Detectar pulsación de F1 para alternar botplay (solo un cambio por frame)
 		if not graphics.isFading() then
 			if input:pressed("debug") then
@@ -1792,9 +2262,34 @@ return {
 		end
 
 		if settings.downscroll then
-			musicPos = -musicTime * 0.6 * speed
+			musicPos = -musicTime * NOTE_SCROLL_MULT * speed
 		else
-			musicPos = musicTime * 0.6 * speed
+			musicPos = musicTime * NOTE_SCROLL_MULT * speed
+		end
+
+		-- Movimiento físico de cada popup de rating/combo activo (igual que
+		-- FlxSprite.velocity/acceleration en PlayState.hx:popUpScore real --
+		-- un "pop" hacia arriba que cae por gravedad, no un tween de
+		-- posición). Integración simple de Euler, igual de válida que la de
+		-- Flixel para este uso (un par de décimas de segundo de animación).
+		-- Recorrido hacia atrás porque table.remove() durante el loop.
+		for i = #activeRatingPopups, 1, -1 do
+			local p = activeRatingPopups[i]
+			p.age = p.age + dt
+			if p.age >= p.fadeDuration then
+				table.remove(activeRatingPopups, i)
+			else
+				p.alpha = 1 - (p.age / p.fadeDuration)
+
+				p.velY = p.velY + p.accelY * dt
+				p.rating.x = p.rating.x + p.velX * dt
+				p.rating.y = p.rating.y + p.velY * dt
+				for k = 1, 3 do
+					p.numVelY[k] = p.numVelY[k] + p.numAccelY[k] * dt
+					p.numbers[k].x = p.numbers[k].x + p.numVelX[k] * dt
+					p.numbers[k].y = p.numbers[k].y + p.numVelY[k] * dt
+				end
+			end
 		end
 
 		for i = 1, 4 do
@@ -1821,47 +2316,58 @@ return {
 					enemyArrow:animate("confirm", false)
 					local animName = enemyNote[1]:getAnimName()
 					if animName == "hold" then
-						-- Nota hold intermedia: el splash ya debería estar en "loop", no tocar
+						-- Nota hold intermedia
+						--
+						-- BUG corregido: antes esto solo (re)disparaba
+						-- safeAnimate() si el personaje YA estaba en "idle"
+						-- (o sin animar) -- una vez el primer segmento lo
+						-- ponía a cantar en loop, ese gate quedaba
+						-- permanentemente en falso (nunca vuelve a "idle"
+						-- por sí solo estando en loop) y el temporizador de
+						-- "volver a idle" de safeAnimate() (armado por ESE
+						-- primer segmento, nunca cancelado/reprogramado por
+						-- los siguientes porque el gate les impedía
+						-- llamarla) terminaba disparando A MITAD del hold,
+						-- sacando al personaje de la animación sin que
+						-- nada lo retomara hasta el siguiente segmento --
+						-- visualmente "se queda tieso en idle". El real
+						-- (y Psych) simplemente re-disparan la animación
+						-- en CADA segmento sin condición -- ahora es seguro
+						-- hacer lo mismo acá (animate()/safeAnimate() ya no
+						-- reinicia el frame si la animación no cambió).
 						if shouldUseAlt then
-							if (not enemy:isAnimated()) or enemy:getAnimName() == "idle" then self:safeAnimate(enemy, curAnim .. " alt", true, 2) end
+							self:safeAnimate(enemy, curAnim .. " alt", true, 2)
 						else
-							if (not enemy:isAnimated()) or enemy:getAnimName() == "idle" then self:safeAnimate(enemy, curAnim, true, 2) end
+							self:safeAnimate(enemy, curAnim, true, 2)
 						end
 					elseif animName == "end" then
-						-- Última nota del hold: terminar el splash
-						if enemyHoldActive[i] then
-							enemyHoldActive[i] = false
-							enemyHoldSplashArrows[i]:animate("end", false)
-						end
+						-- Última nota del hold -- mismo criterio que arriba.
 						if shouldUseAlt then
-							if (not enemy:isAnimated()) or enemy:getAnimName() == "idle" then self:safeAnimate(enemy, curAnim .. " alt", true, 2) end
+							self:safeAnimate(enemy, curAnim .. " alt", true, 2)
 						else
-							if (not enemy:isAnimated()) or enemy:getAnimName() == "idle" then self:safeAnimate(enemy, curAnim, true, 2) end
+							self:safeAnimate(enemy, curAnim, true, 2)
 						end
 					else
-						-- Nota "on" (inicio): si tiene notas hold detrás, arrancar el splash
-						-- Blazin fight: interceptar notas con noteKind
-						if enemyNote[1].noteKind and _G.currentWeek and _G.currentWeek.onEnemyNoteHit then
+						-- Nota "on" (inicio)
+						-- Hook genérico lado-oponente (mismo patrón que customNoteHit
+						-- del lado boyfriend, ver más abajo) -- Weekend 1/PhillyStreets
+						-- lo usa para "weekend-1-lightcan"/"kickcan"/"kneecan"
+						-- (PlayState.hx real: opponentNoteHit()).
+						local handledEnemy = false
+						if _G.currentWeek and _G.currentWeek.customEnemyNoteHit then
+							handledEnemy = _G.currentWeek:customEnemyNoteHit(curAnim, enemyNote[1], enemy)
+						end
+
+						-- Blazin fight: interceptar notas con noteKind (mecanismo viejo,
+						-- se mantiene por compatibilidad -- noteKind no lo puebla
+						-- ningún chart actual, customEnemyNoteHit lo reemplaza).
+						if not handledEnemy and enemyNote[1].noteKind and _G.currentWeek and _G.currentWeek.onEnemyNoteHit then
 							_G.currentWeek.onEnemyNoteHit(enemyNote[1].noteKind)
-						elseif not enemyNote[1].noAnimation then
+						elseif not handledEnemy and not enemyNote[1].noAnimation then
 							if shouldUseAlt then
 								self:safeAnimate(enemy, curAnim .. " alt", false, 2)
 							else
 								self:safeAnimate(enemy, curAnim, false, 2)
-							end
-						end
-						-- Revisar si la siguiente nota es un hold para iniciar el splash
-						if #enemyNote > 1 then
-							local nextAnim = enemyNote[2]:getAnimName()
-							if (nextAnim == "hold" or nextAnim == "end") and not enemyHoldActive[i] then
-								enemyHoldActive[i] = true
-								enemyHoldSplashVisible[i] = true
-								enemyHoldSplashArrows[i]:animate("start", false)
-								Timer.after(1/24, function()
-									if enemyHoldActive[i] then
-										enemyHoldSplashArrows[i]:animate("loop", true)
-									end
-								end)
 							end
 						end
 					end
@@ -1942,26 +2448,7 @@ return {
 										combo = combo + 1
 										if combo > self.maxCombo then self.maxCombo = combo end
 
-										rating:animate(ratingType, false)
-										numbers[1]:animate(tostring(math.floor(combo / 100 % 10)), false)
-										numbers[2]:animate(tostring(math.floor(combo / 10 % 10)), false)
-										numbers[3]:animate(tostring(math.floor(combo % 10)), false)
-
-										for k = 1, 5 do
-											if ratingTimers[k] then Timer.cancel(ratingTimers[k]) end
-										end
-
-										ratingVisibility[1] = 1
-										rating.y = girlfriend.y - 50
-										for k = 1, 3 do
-											numbers[k].y = girlfriend.y + 50
-										end
-
-										ratingTimers[1] = Timer.tween(2, ratingVisibility, {0})
-										ratingTimers[2] = Timer.tween(2, rating, {y = girlfriend.y - 100}, "out-elastic")
-										ratingTimers[3] = Timer.tween(2, numbers[1], {y = girlfriend.y + love.math.random(-10, 10)}, "out-elastic")
-										ratingTimers[4] = Timer.tween(2, numbers[2], {y = girlfriend.y + love.math.random(-10, 10)}, "out-elastic")
-										ratingTimers[5] = Timer.tween(2, numbers[3], {y = girlfriend.y + love.math.random(-10, 10)}, "out-elastic")
+										spawnRatingPopup(ratingType, combo)
 
 										health = health + 1
 									end
@@ -2003,18 +2490,6 @@ return {
 									note.hit = true
 									table.remove(boyfriendNote, j)
 
-									if #boyfriendNote > 0 and (boyfriendNote[1]:getAnimName() == "hold" or boyfriendNote[1]:getAnimName() == "end") then
-										holdActive[noteNum] = true
-										holdActiveGroup[noteNum] = note.holdGroupId
-										holdSplashVisible[noteNum] = true
-										holdSplashArrows[noteNum]:animate("start", false)
-										Timer.after(1/24, function()
-											if holdActive[noteNum] then
-												holdSplashArrows[noteNum]:animate("loop", true)
-											end
-										end)
-									end
-
 									break
 								end
 							end
@@ -2041,17 +2516,8 @@ return {
 					if voices then voices:setVolume(1) end
 
 					local removedNote = boyfriendNote[1]
-					local animName = removedNote:getAnimName()
 					removedNote.hit = true
 					table.remove(boyfriendNote, 1)
-
-					if animName == "end" then
-						holdActive[noteNum] = false
-						holdActiveGroup[noteNum] = nil
-						holdSplashArrows[noteNum]:animate("end", false)
-					elseif animName == "hold" then
-						-- El splash sigue en "loop"
-					end
 
 					boyfriendArrow:animate("confirm", false)
 
@@ -2060,9 +2526,21 @@ return {
 						handledHold = _G.currentWeek:customNoteHold(curAnim, removedNote, boyfriend)
 					end
 					if not handledHold then
-						if (not boyfriend:isAnimated()) or boyfriend:getAnimName() == "idle" then
-							self:safeAnimate(boyfriend, curAnim, true, 3)
-						end
+						-- BUG corregido: el gate "solo si está en idle"
+						-- quedaba permanentemente bloqueado una vez el
+						-- primer segmento del hold lo ponía a cantar en
+						-- loop (nunca vuelve a "idle" solo estando en
+						-- loop), así que el temporizador de "volver a
+						-- idle" de safeAnimate() -- armado por ese primer
+						-- segmento y nunca reprogramado por los
+						-- siguientes, porque el gate les impedía llamarla
+						-- -- terminaba disparando A MITAD del hold y
+						-- nada lo retomaba hasta des-idle-arse de nuevo.
+						-- El real (y Psych) re-disparan sin condición en
+						-- cada segmento -- ahora es seguro hacer lo mismo
+						-- (animate() ya no reinicia el frame si la
+						-- animación no cambió).
+						self:safeAnimate(boyfriend, curAnim, true, 3)
 					end
 
 					-- Lógica de grupo para holds
@@ -2073,7 +2551,6 @@ return {
 							if group.hitCount == group.totalNotes then
 								-- Nota larga completada manteniendo presionado → siempre sick
 								group.completed = true
-								holdActiveGroup[noteNum] = nil  -- ya resuelto, limpiar
 								local ratingType = "sick"
 								local ratingInfo = self.ratingsData[ratingType]
 								score = score + ratingInfo.score
@@ -2088,24 +2565,7 @@ return {
 
 								combo = combo + 1
 										if combo > self.maxCombo then self.maxCombo = combo end
-								rating:animate(ratingType, false)
-								numbers[1]:animate(tostring(math.floor(combo / 100 % 10)), false)
-								numbers[2]:animate(tostring(math.floor(combo / 10 % 10)), false)
-								numbers[3]:animate(tostring(math.floor(combo % 10)), false)
-
-								for k = 1, 5 do
-									if ratingTimers[k] then Timer.cancel(ratingTimers[k]) end
-								end
-								ratingVisibility[1] = 1
-								rating.y = girlfriend.y - 50
-								for k = 1, 3 do
-									numbers[k].y = girlfriend.y + 50
-								end
-								ratingTimers[1] = Timer.tween(2, ratingVisibility, {0})
-								ratingTimers[2] = Timer.tween(2, rating, {y = girlfriend.y - 100}, "out-elastic")
-								ratingTimers[3] = Timer.tween(2, numbers[1], {y = girlfriend.y + love.math.random(-10, 10)}, "out-elastic")
-								ratingTimers[4] = Timer.tween(2, numbers[2], {y = girlfriend.y + love.math.random(-10, 10)}, "out-elastic")
-								ratingTimers[5] = Timer.tween(2, numbers[3], {y = girlfriend.y + love.math.random(-10, 10)}, "out-elastic")
+								spawnRatingPopup(ratingType, combo)
 
 								health = health + 1
 							end
@@ -2116,86 +2576,17 @@ return {
 					end
 				end
 
-				-- Al soltar la tecla
+				-- Al soltar la tecla: Psych real no hace nada especial acá más
+				-- que volver la flecha a "off" (PlayState.hx: keyReleased()) --
+				-- no hay rating/score/combo/health bonus por soltar. Antes
+				-- esto otorgaba una nota "fantasma" extra (rating según qué
+				-- tan temprano se soltó, con su propio popup/combo/vida),
+				-- algo que Psych no tiene. Las piezas del sustain que queden
+				-- sin tocar simplemente van a fallar solas por el camino
+				-- normal de "nota no tocada a tiempo" (más abajo, NOTE_KILL_OFFSET),
+				-- igual que en Psych.
 				if input:released(curInput) then
 					boyfriendArrow:animate("off", false)
-					if holdActive[noteNum] then
-						holdActive[noteNum] = false
-						holdSplashArrows[noteNum]:animate("end", false)
-
-						-- Buscar la nota "end" del grupo activo para calcular precisión del release
-						local groupId = holdActiveGroup[noteNum]
-						holdActiveGroup[noteNum] = nil
-						if groupId then
-							local group = holdGroupsInfo[groupId]
-							if group and not group.missed and not group.completed then
-								-- Buscar strumTime de la nota "end" del grupo
-								local endStrumTime = nil
-								for _, n in ipairs(boyfriendNote) do
-									if n.holdGroupId == groupId and n:getAnimName() == "end" then
-										endStrumTime = n.strumTime
-										break
-									end
-								end
-								-- Si no hay nota "end" pendiente, significa que ya pasaron todas → sick
-								local earlyMs = endStrumTime and (endStrumTime - musicTime) or 0
-								if earlyMs < 0 then earlyMs = 0 end
-
-								local ratingType
-								if earlyMs <= HIT_WINDOW_SICK then
-									ratingType = "sick"
-								elseif earlyMs <= HIT_WINDOW_GOOD then
-									ratingType = "good"
-								elseif earlyMs <= HIT_WINDOW_BAD then
-									ratingType = "bad"
-								else
-									ratingType = "shit"
-								end
-
-								group.completed = true
-								-- Marcar todas las notas restantes del grupo como hit para que no generen miss
-								for _, n in ipairs(boyfriendNote) do
-									if n.holdGroupId == groupId then
-										n.hit = true
-									end
-								end
-
-								local ratingInfo = self.ratingsData[ratingType]
-								score = score + ratingInfo.score
-								self.totalNotesHit = self.totalNotesHit + ratingInfo.mod
-								ratingInfo.hits = ratingInfo.hits + 1
-								self.totalPlayed = self.totalPlayed + 1
-								self:recalculateRating(false)
-
-								if self.scoreTextTween then Timer.cancel(self.scoreTextTween) end
-								self.scoreTextScale = 1.1
-								self.scoreTextTween = Timer.tween(0.2, self, {scoreTextScale = 1}, "out-quad", function() self.scoreTextTween = nil end)
-
-								combo = combo + 1
-										if combo > self.maxCombo then self.maxCombo = combo end
-								rating:animate(ratingType, false)
-								numbers[1]:animate(tostring(math.floor(combo / 100 % 10)), false)
-								numbers[2]:animate(tostring(math.floor(combo / 10 % 10)), false)
-								numbers[3]:animate(tostring(math.floor(combo % 10)), false)
-
-								for k = 1, 5 do
-									if ratingTimers[k] then Timer.cancel(ratingTimers[k]) end
-								end
-								ratingVisibility[1] = 1
-								rating.y = girlfriend.y - 50
-								for k = 1, 3 do
-									numbers[k].y = girlfriend.y + 50
-								end
-								ratingTimers[1] = Timer.tween(2, ratingVisibility, {0})
-								ratingTimers[2] = Timer.tween(2, rating, {y = girlfriend.y - 100}, "out-elastic")
-								ratingTimers[3] = Timer.tween(2, numbers[1], {y = girlfriend.y + love.math.random(-10, 10)}, "out-elastic")
-								ratingTimers[4] = Timer.tween(2, numbers[2], {y = girlfriend.y + love.math.random(-10, 10)}, "out-elastic")
-								ratingTimers[5] = Timer.tween(2, numbers[3], {y = girlfriend.y + love.math.random(-10, 10)}, "out-elastic")
-
-								health = health + 1
-							end
-						end
-					end
 				end
 			end
 		end
@@ -2263,14 +2654,6 @@ return {
 										group.hitCount = 1
 										group.started = true
 										group.ratingType = "sick"
-										-- Iniciar salpicadura de hold
-										holdSplashVisible[i] = true
-										holdSplashArrows[i]:animate("start", false)
-										Timer.after(1/24, function()
-											if holdSplashVisible[i] then
-												holdSplashArrows[i]:animate("loop", true)
-											end
-										end)
 										botHolding[i] = true
 										-- La flecha se queda en "confirm" durante todo el hold
 									else
@@ -2288,28 +2671,10 @@ return {
 
 											combo = combo + 1
 										if combo > self.maxCombo then self.maxCombo = combo end
-											rating:animate("sick", false)
-											numbers[1]:animate(tostring(math.floor(combo / 100 % 10)), false)
-											numbers[2]:animate(tostring(math.floor(combo / 10 % 10)), false)
-											numbers[3]:animate(tostring(math.floor(combo % 10)), false)
-
-											for k = 1, 5 do
-												if ratingTimers[k] then Timer.cancel(ratingTimers[k]) end
-											end
-											ratingVisibility[1] = 1
-											rating.y = girlfriend.y - 50
-											for k = 1, 3 do
-												numbers[k].y = girlfriend.y + 50
-											end
-											ratingTimers[1] = Timer.tween(2, ratingVisibility, {0})
-											ratingTimers[2] = Timer.tween(2, rating, {y = girlfriend.y - 100}, "out-elastic")
-											ratingTimers[3] = Timer.tween(2, numbers[1], {y = girlfriend.y + love.math.random(-10, 10)}, "out-elastic")
-											ratingTimers[4] = Timer.tween(2, numbers[2], {y = girlfriend.y + love.math.random(-10, 10)}, "out-elastic")
-											ratingTimers[5] = Timer.tween(2, numbers[3], {y = girlfriend.y + love.math.random(-10, 10)}, "out-elastic")
+											spawnRatingPopup("sick", combo)
 
 											health = health + 1
 											botHolding[i] = false
-											holdSplashArrows[i]:animate("end", false)
 											-- Al terminar el hold, la flecha vuelve a "off"
 											boyfriendArrows[i]:animate("off", false)
 										end
@@ -2331,26 +2696,7 @@ return {
 								combo = combo + 1
 										if combo > self.maxCombo then self.maxCombo = combo end
 
-								rating:animate("sick", false)
-								numbers[1]:animate(tostring(math.floor(combo / 100 % 10)), false)
-								numbers[2]:animate(tostring(math.floor(combo / 10 % 10)), false)
-								numbers[3]:animate(tostring(math.floor(combo % 10)), false)
-
-								for k = 1, 5 do
-									if ratingTimers[k] then Timer.cancel(ratingTimers[k]) end
-								end
-
-								ratingVisibility[1] = 1
-								rating.y = girlfriend.y - 50
-								for k = 1, 3 do
-									numbers[k].y = girlfriend.y + 50
-								end
-
-								ratingTimers[1] = Timer.tween(2, ratingVisibility, {0})
-								ratingTimers[2] = Timer.tween(2, rating, {y = girlfriend.y - 100}, "out-elastic")
-								ratingTimers[3] = Timer.tween(2, numbers[1], {y = girlfriend.y + love.math.random(-10, 10)}, "out-elastic")
-								ratingTimers[4] = Timer.tween(2, numbers[2], {y = girlfriend.y + love.math.random(-10, 10)}, "out-elastic")
-								ratingTimers[5] = Timer.tween(2, numbers[3], {y = girlfriend.y + love.math.random(-10, 10)}, "out-elastic")
+								spawnRatingPopup("sick", combo)
 
 								health = health + 1
 
@@ -2409,9 +2755,6 @@ return {
 								group.hitCount = group.hitCount + 1
 								if group.hitCount == group.totalNotes then
 									group.completed = true
-									holdActive[i] = false
-									holdActiveGroup[i] = nil
-									holdSplashArrows[i]:animate("end", false)
 									local ratingInfo = self.ratingsData["sick"]
 									score = score + ratingInfo.score
 									self.totalNotesHit = self.totalNotesHit + ratingInfo.mod
@@ -2443,10 +2786,6 @@ return {
 								combo = 0
 								health = health - 2
 								if combo >= 5 then self:safeAnimate(girlfriend, "sad", true, 1) end
-								if holdActive[i] then
-									holdActive[i] = false
-									holdSplashArrows[i]:animate("end", false)
-								end
 								if animName == "on" then
 									-- Animación de miss si es la primera nota
 									local handled = false
@@ -2486,10 +2825,6 @@ return {
 								misses = misses + 1
 								self.totalPlayed = self.totalPlayed + 1
 								self:recalculateRating(true)
-								if holdActive[i] then
-									holdActive[i] = false
-									holdSplashArrows[i]:animate("end", false)
-								end
 							end
 							table.remove(boyfriendNote, j)
 						end
@@ -2500,6 +2835,32 @@ return {
 					j = j + 1
 				end
 				::continueKillLoop::
+			end
+		end
+
+		-- BUG corregido: las notas del enemy SOLO se eliminaban por
+		-- posición (boyfriendNote[1].y - musicPos <= -375 dentro del bucle
+		-- principal, arriba) -- a diferencia de boyfriend, nunca tenían
+		-- una red de seguridad por TIEMPO como la de arriba
+		-- (NOTE_KILL_OFFSET). Si por cualquier motivo (cambio de
+		-- velocidad, redondeo, un evento que desincroniza musicPos) ese
+		-- chequeo de posición no llega a cumplirse para AUNQUE SEA una
+		-- nota, esa nota (y todo lo que viene detrás en la cola, porque
+		-- solo se mira enemyNote[1]) se queda atascada para siempre --
+		-- "anyNotes" (la condición de fin de canción) nunca se vuelve
+		-- false, y la canción no termina nunca. El enemy no "falla" notas
+		-- (no hay penalización para el CPU), así que esta limpieza es
+		-- puramente defensiva, sin efectos de puntaje/animación.
+		for i = 1, 4 do
+			local enemyNote = enemyNotes[i]
+			local j = 1
+			while j <= #enemyNote do
+				local note = enemyNote[j]
+				if note and (musicTime - note.strumTime) > NOTE_KILL_OFFSET then
+					table.remove(enemyNote, j)
+				else
+					j = j + 1
+				end
 			end
 		end
 
@@ -2558,8 +2919,12 @@ return {
             end
         end
 
-		enemyIcon.x = 425 - health * 10
-		boyfriendIcon.x = 585 - health * 10
+		-- Anclas escaladas en la misma proporción que el nuevo ancho de la
+		-- barra de salud (850 vs los 1000 anteriores -> factor 0.85), para
+		-- que los iconos sigan alineados con los bordes de la barra ya
+		-- recalibrada (ver drawUI()).
+		enemyIcon.x = 361.25 - health * 8.5
+		boyfriendIcon.x = 497.25 - health * 8.5
 
 		local enemyAnim = enemyIcon:getAnimName()
 		if enemyAnim ~= lastEnemyAnim then
@@ -2597,7 +2962,17 @@ return {
 			end
 		end
 
-        if musicThres ~= oldMusicThres and math.fmod(absMusicTime, 60000 / bpm) < 100 then
+        -- absMusicTime se pone en update() (no acá) -- puede llegar nil en
+        -- el PRIMER frame post-cutscene: el skip (stage.lua:skipCutscene
+        -- -> finishCutscene) apaga _G.cutscenePause A MITAD del frame
+        -- (dentro de stage.update(dt), que corre DESPUÉS de weeks:update()
+        -- en week7.lua), así que weeks:update() de ESTE frame todavía
+        -- corrió con cutscenePause=true (early return, sin tocar
+        -- absMusicTime) -- pero el guard de arriba (_G.cutscenePause) ya
+        -- no bloquea acá porque para cuando se llega a updateUI() ya está
+        -- en false. Sin este chequeo, math.fmod(nil,...) tira "bad
+        -- argument #1" y rompe el juego entero.
+        if absMusicTime and bpm and musicThres ~= oldMusicThres and math.fmod(absMusicTime, 60000 / bpm) < 100 then
             if enemyIconTimer then Timer.cancel(enemyIconTimer) end
             if boyfriendIconTimer then Timer.cancel(boyfriendIconTimer) end
 
@@ -2606,15 +2981,20 @@ return {
             local boyfriendBaseX = boyfriendIcon.baseSizeX or -1.5
             local boyfriendBaseY = boyfriendIcon.baseSizeY or 1.5
 
+            -- Magnitud (1.2x) y caída ajustadas a Psych real (HealthIcon
+            -- bump: scale.set(1.2,1.2) instantáneo, decae con constante de
+            -- tiempo fija ~0.11s, INDEPENDIENTE del bpm). Antes la subida
+            -- era 1.16x y la caída duraba un beat completo (mucho más lento
+            -- a bpm bajos que el decay fijo de Psych).
             enemyIconTimer = Timer.tween((60 / bpm) / 16, enemyIcon,
-                {sizeX = enemyBaseX * 1.16, sizeY = enemyBaseY * 1.16}, "out-quad", function()
-                enemyIconTimer = Timer.tween((60 / bpm), enemyIcon,
+                {sizeX = enemyBaseX * 1.2, sizeY = enemyBaseY * 1.2}, "out-quad", function()
+                enemyIconTimer = Timer.tween(0.2, enemyIcon,
                     {sizeX = enemyBaseX, sizeY = enemyBaseY}, "out-quad")
             end)
 
             boyfriendIconTimer = Timer.tween((60 / bpm) / 16, boyfriendIcon,
-                {sizeX = boyfriendBaseX * 1.16, sizeY = boyfriendBaseY * 1.16}, "out-quad", function()
-                boyfriendIconTimer = Timer.tween((60 / bpm), boyfriendIcon,
+                {sizeX = boyfriendBaseX * 1.2, sizeY = boyfriendBaseY * 1.2}, "out-quad", function()
+                boyfriendIconTimer = Timer.tween(0.2, boyfriendIcon,
                     {sizeX = boyfriendBaseX, sizeY = boyfriendBaseY}, "out-quad")
             end)
         end
@@ -2646,11 +3026,33 @@ return {
 					-- Guardar scores
 					if _G.storyMode then
 						_G.weekTotalScore = (_G.weekTotalScore or 0) + score
+						-- BUG real: sick/good/bad/shit/missed/maxCombo/accuracy se
+						-- reseteaban por canción en initUI() sin ningún acumulador
+						-- equivalente a weekTotalScore -- la pantalla de resultados
+						-- al final de semana (buildScoreData(), llamada DESPUÉS de
+						-- este bloque para la última canción) terminaba mostrando
+						-- solo los valores de la ÚLTIMA canción, no el total de la
+						-- semana, aunque el score sí estuviera bien acumulado.
+						-- totalNotesHit/totalPlayed (no el ratingPercent ya
+						-- dividido) son los que se acumulan para accuracy -- un
+						-- promedio de porcentajes por canción sería incorrecto si
+						-- las canciones tienen distinta cantidad de notas.
+						_G.weekTotalSick      = (_G.weekTotalSick or 0) + self.ratingsData.sick.hits
+						_G.weekTotalGood      = (_G.weekTotalGood or 0) + self.ratingsData.good.hits
+						_G.weekTotalBad       = (_G.weekTotalBad or 0) + self.ratingsData.bad.hits
+						_G.weekTotalShit      = (_G.weekTotalShit or 0) + self.ratingsData.shit.hits
+						_G.weekTotalMissed    = (_G.weekTotalMissed or 0) + misses
+						_G.weekTotalNotesHit  = (_G.weekTotalNotesHit or 0) + self.totalNotesHit
+						_G.weekTotalPlayed    = (_G.weekTotalPlayed or 0) + self.totalPlayed
+						_G.weekMaxCombo       = math.max(_G.weekMaxCombo or 0, self.maxCombo or 0)
 						if _G.currentSongIndex == #_G.weekSongs then
 							local old = highscores.getStoryScore(_G.currentWeekId, _G.currentDifficulty)
 							if _G.weekTotalScore > old then
 								highscores.setStoryScore(_G.currentWeekId, _G.currentDifficulty, _G.weekTotalScore)
 							end
+							-- Port 1:1 de PlayState.hx:2468 (weekCompleted.set) --
+							-- desbloquea la semana siguiente en el StoryMenu.
+							highscores.setWeekCompleted(_G.currentWeekId)
 						end
 					else
 						local sName = _G.currentSongName or "unknown"
@@ -2658,6 +3060,7 @@ return {
 						local old = highscores.getFreeplayScore(songKey, _G.currentDifficulty)
 						if score > old then
 							highscores.setFreeplayScore(songKey, _G.currentDifficulty, score)
+							highscores.setFreeplayAccuracy(songKey, _G.currentDifficulty, self.ratingPercent or 0)
 						end
 					end
 					-- Iniciar transición
@@ -2718,20 +3121,11 @@ return {
 		end
 	end,
 
+	-- Ya no dibuja nada: el popup de rating/combo se mueve a HUD fijo, ver
+	-- drawUI(). Se deja como no-op (no se borra) porque la llaman los 8
+	-- archivos stages/*/stage.lua -- quitar esas llamadas no aporta nada
+	-- y es más superficie para romper algo por accidente.
 	drawRating = function(self, multiplier)
-		love.graphics.push()
-			if multiplier then
-				love.graphics.translate(cam.x * multiplier, cam.y * multiplier)
-			else
-				love.graphics.translate(cam.x, cam.y)
-			end
-			graphics.setColor(1, 1, 1, ratingVisibility[1])
-			rating:draw()
-			for i = 1, 3 do
-				numbers[i]:draw()
-			end
-			graphics.setColor(1, 1, 1)
-		love.graphics.pop()
 	end,
 
 drawUI = function(self)
@@ -2740,18 +3134,30 @@ drawUI = function(self)
             love.graphics.scale(0.7, 0.7)
 
             for i = 1, 4 do
-                -- Flechas estáticas con transparencia
-                if not middleScroll then
-                    graphics.setColor(1, 1, 1, (enemyArrows[i].alpha or 1) * guiAlphaObj.value)
-                    enemyArrows[i]:draw()
+                -- Tintado RGB real de Psych (StrumNote.hx/Note.hx: el atlas
+                -- NOTE_assets.png es "crudo" -- mismo arte para los 4
+                -- carriles, recoloreado por shader, igual que los splashes).
+                -- Solo en semanas NO pixel (el atlas pixel ya viene coloreado
+                -- de antemano, sin necesidad de shader). El strum NO se
+                -- tinta mientras está en "off" (StrumNote.hx: rgbShader solo
+                -- se activa si animation.curAnim.name != 'static').
+                if not _G.isPixelWeek then
+                    enemyArrows[i].shader = (enemyArrows[i]:getAnimName() ~= "off") and splashShader.forLane(i) or nil
+                    boyfriendArrows[i].shader = (boyfriendArrows[i]:getAnimName() ~= "off") and splashShader.forLane(i) or nil
                 end
+
+                -- Flechas estáticas con transparencia -- Real (PlayState.hx):
+                -- el oponente NO se oculta en middlescroll, queda visible con
+                -- alpha 0.35 (ya seteado en initUI()) superpuesto cerca del
+                -- centro -- antes esto lo ocultaba del todo.
+                graphics.setColor(1, 1, 1, (enemyArrows[i].alpha or 1) * guiAlphaObj.value)
+                enemyArrows[i]:draw()
                 graphics.setColor(1, 1, 1, (boyfriendArrows[i].alpha or 1) * guiAlphaObj.value)
                 boyfriendArrows[i]:draw()
                 graphics.setColor(1, 1, 1)
 
                 love.graphics.push()
                     love.graphics.translate(0, -musicPos)
-                    if not middleScroll then
                     for j = #enemyNotes[i], 1, -1 do
                         if (not settings.downscroll and enemyNotes[i][j].y - musicPos <= 560) or (settings.downscroll and enemyNotes[i][j].y - musicPos >= -560) then
                             local animName = enemyNotes[i][j]:getAnimName()
@@ -2770,11 +3176,11 @@ drawUI = function(self)
                                 end
                             end
                             graphics.setColor(1, 1, 1, alpha * guiAlphaObj.value)
+                            if not _G.isPixelWeek then enemyNotes[i][j].shader = splashShader.forLane(i) end
                             enemyNotes[i][j]:draw()
                             graphics.setColor(1, 1, 1)
                         end
                     end
-                    end -- middleScroll
                     for j = #boyfriendNotes[i], 1, -1 do
                         if (not settings.downscroll and boyfriendNotes[i][j].y - musicPos <= 560) or (settings.downscroll and boyfriendNotes[i][j].y - musicPos >= -560) then
                             local animName = boyfriendNotes[i][j]:getAnimName()
@@ -2793,6 +3199,7 @@ drawUI = function(self)
                                 end
                             end
                             graphics.setColor(1, 1, 1, alpha * guiAlphaObj.value)
+                            if not _G.isPixelWeek then boyfriendNotes[i][j].shader = splashShader.forLane(i) end
                             boyfriendNotes[i][j]:draw()
                         end
                     end
@@ -2808,54 +3215,80 @@ drawUI = function(self)
                 end
             end
 
-			for i = 1, 4 do
-                if holdSplashVisible[i] then
-                    graphics.setColor(1, 1, 1, guiAlphaObj.value)
-                    holdSplashArrows[i]:draw()
-                end
-            end
-
-            for i = 1, 4 do
-                if enemyHoldSplashVisible[i] and not middleScroll then
-                    graphics.setColor(1, 1, 1, guiAlphaObj.value)
-                    enemyHoldSplashArrows[i]:draw()
-                end
-            end
-
-            local enemyIconName = enemyIcon:getAnimName():gsub(" losing$", "")
-            local enemyCol = characterColors[enemyIconName] or {255,0,0}
+			local enemyIconName = enemyIcon:getAnimName():gsub(" losing$", "")
+            local enemyCol = healthBarColorFor(enemy, enemyIconName) or {255,0,0}
             local playerIconName = boyfriendIcon:getAnimName():gsub(" losing$", "")
-            local playerCol = characterColors[playerIconName] or characterColors["boyfriend"] or {0,255,0}
+            local playerCol = healthBarColorFor(boyfriend, playerIconName) or characterColors["boyfriend"] or {0,255,0}
             
-            -- Barra de salud con transparencia
+            -- Barra de salud con transparencia. Tamaño recalibrado para que,
+            -- tras el scale(0.7,0.7) de este bloque, el resultado en píxeles
+            -- de PANTALLA real coincida con el gráfico COMPLETO de Psych
+            -- (601x19 -- el 595x13 es solo el área interior de relleno,
+            -- descontando 3px de borde a cada lado; el alto VISIBLE total
+            -- del barra es 19, no 13 -- usar 13 la dejaba mucho más fina de
+            -- lo que se ve en Psych). La posición Y (400/-400 local) ya
+            -- coincidía casi exacto con Psych, no se toca.
+            local healthBarWidth = 601 / 0.7
+            local healthBarHeight = 19 / 0.7
+            local healthBarHalf = healthBarWidth / 2
+            local healthFillMult = healthBarWidth / 100
             if settings.downscroll then
                 local y = -400
                 graphics.setColor(enemyCol[1]/255, enemyCol[2]/255, enemyCol[3]/255, guiAlphaObj.value)
-                love.graphics.rectangle("fill", -500, y, 1000, 25)
+                love.graphics.rectangle("fill", -healthBarHalf, y, healthBarWidth, healthBarHeight)
                 graphics.setColor(playerCol[1]/255, playerCol[2]/255, playerCol[3]/255, guiAlphaObj.value)
-                love.graphics.rectangle("fill", 500, y, -health * 10, 25)
+                love.graphics.rectangle("fill", healthBarHalf, y, -health * healthFillMult, healthBarHeight)
                 graphics.setColor(0, 0, 0, guiAlphaObj.value)
                 love.graphics.setLineWidth(10)
-                love.graphics.rectangle("line", -500, y, 1000, 25)
+                love.graphics.rectangle("line", -healthBarHalf, y, healthBarWidth, healthBarHeight)
                 love.graphics.setLineWidth(1)
             else
                 local y = 400
                 graphics.setColor(enemyCol[1]/255, enemyCol[2]/255, enemyCol[3]/255, guiAlphaObj.value)
-                love.graphics.rectangle("fill", -500, y, 1000, 25)
+                love.graphics.rectangle("fill", -healthBarHalf, y, healthBarWidth, healthBarHeight)
                 graphics.setColor(playerCol[1]/255, playerCol[2]/255, playerCol[3]/255, guiAlphaObj.value)
-                love.graphics.rectangle("fill", 500, y, -health * 10, 25)
+                love.graphics.rectangle("fill", healthBarHalf, y, -health * healthFillMult, healthBarHeight)
                 graphics.setColor(0, 0, 0, guiAlphaObj.value)
                 love.graphics.setLineWidth(10)
-                love.graphics.rectangle("line", -500, y, 1000, 25)
+                love.graphics.rectangle("line", -healthBarHalf, y, healthBarWidth, healthBarHeight)
                 love.graphics.setLineWidth(1)
             end
 
             -- Barra de tiempo con transparencia
             if settings.timebarMode ~= "none" then
-                local timeBarHeight = 25
-                local timeBarWidth = 500
+                -- Tamaño/posición recalibrados para que, tras el scale(0.7,0.7)
+                -- de este bloque, el resultado en píxeles de PANTALLA real
+                -- coincida con Psych real (PlayState.hx): barra 400x19
+                -- (19 = alto del gráfico COMPLETO; 13 era solo el área
+                -- interior de relleno y dejaba la barra demasiado fina),
+                -- Y = 27 (upscroll) / 684 (downscroll) sobre un lienzo 1280x720.
+                -- localValor = pantallaValor / 0.7 (o, para Y, (pantallaY-360)/0.7
+                -- ya que este bloque también traslada el origen al centro).
+                local timeBarHeight = 19 / 0.7
+                local timeBarWidth = 400 / 0.7
                 local timeBarX = -timeBarWidth / 2
-                local timeBarY = settings.downscroll and 470 or -500
+                -- love.graphics.rectangle dibuja desde (x,y) hacia abajo/derecha,
+                -- así que al pasar el alto de 13->19 la barra "creció" hacia
+                -- abajo y empezó a tapar levemente los strums. Se resta la
+                -- mitad del crecimiento para que la barra quede centrada en
+                -- la misma posición de antes, en vez de crecer solo hacia abajo.
+                local timeBarYBase = settings.downscroll and ((684 - 360) / 0.7) or ((27 - 360) / 0.7)
+                -- Ajuste empírico extra: el strum no es un punto, tiene su
+                -- propio alto visual alrededor de su .y -- la sola
+                -- recalibración del centro de la barra no alcanzaba para
+                -- separarla del strum (reportado por el usuario con
+                -- screenshots, primero solo en upscroll). Este "15" es a ojo.
+                --
+                -- El SIGNO depende de la dirección: en upscroll la barra
+                -- está ARRIBA del strum (bar.y=27 < strum.y screen=97.5) --
+                -- alejarla es restar (subir más). En downscroll la barra
+                -- está ABAJO del strum (bar.y=684 > strum.y screen=622.5) --
+                -- alejarla es SUMAR (bajar más), lo opuesto. Antes se restaba
+                -- en los dos casos por igual, así que en downscroll el ajuste
+                -- empujaba la barra HACIA el strum (empeorando el solape) en
+                -- vez de alejarla -- por eso "no cambiaba nada" ahí.
+                local timeBarYNudge = settings.downscroll and 15 or -15
+                local timeBarY = timeBarYBase - ((19 - 13) / 0.7) / 2 + timeBarYNudge
                 local margin = 4
 
                 graphics.setColor(0, 0, 0, guiAlphaObj.value)
@@ -2872,7 +3305,11 @@ drawUI = function(self)
                 -- OPT FIX 3+5: outline con 4 diagonales; font cacheada en updateUI
                 local font = love.graphics.getFont()
                 local text = self.timeText or ""
-                local textScale = 1.5
+                -- Fuente base = 24 (main.lua). Psych usa tamaño 32 fijo para
+                -- el texto de tiempo -- 24*textScale*0.7(transform) = 32
+                -- => textScale = 32/(24*0.7). Antes (1.5) daba ~25px en
+                -- pantalla real, notablemente más chico que Psych.
+                local textScale = 32 / (24 * 0.7)
                 local textWidth = font:getWidth(text) * textScale
                 local textHeight = (self.cachedFontHeight or font:getHeight()) * textScale
                 local textX = -textWidth / 2
@@ -2918,6 +3355,25 @@ drawUI = function(self)
                 countdown:draw()
                 graphics.setColor(1, 1, 1)
             end
+
+            -- Popups de rating/combo activos: HUD FIJO (igual que
+            -- comboGroup con cameras=[camHUD] en PlayState.hx real) -- antes
+            -- se dibujaba en drawRating(), adentro del cam.x/y de paneo/zoom
+            -- de CADA stage, así que terminaba en una posición de pantalla
+            -- distinta (a veces fuera de lo visible) según el stage y el
+            -- estado de la cámara en ese momento. Acá, dentro del mismo
+            -- push() de drawUI(), su posición en pantalla es siempre la
+            -- misma sin importar el stage o la cámara. Se dibujan TODOS los
+            -- popups activos del pool (comboStacking=true real -- ver
+            -- spawnRatingPopup), no solo el último.
+            for _, p in ipairs(activeRatingPopups) do
+                graphics.setColor(1, 1, 1, p.alpha * guiAlphaObj.value)
+                p.rating:draw()
+                for i = 1, 3 do
+                    p.numbers[i]:draw()
+                end
+            end
+            graphics.setColor(1, 1, 1)
         love.graphics.pop()
 
         -- Dibujar jumpscare en coordenadas de pantalla (sin transformaciones)
@@ -2936,6 +3392,19 @@ drawUI = function(self)
 		local diff = rawDiff:gsub("^%-", "")  -- quitar guión inicial
 		if diff == "" then diff = "normal" end
 
+		-- En modo historia, los resultados de fin de semana usan los
+		-- acumulados de TODA la semana (ver el bloque de fin de canción más
+		-- arriba) en vez de los datos de self/ratingsData (que solo
+		-- reflejan la ÚLTIMA canción, porque initUI() los resetea en cada
+		-- canción nueva). totalNotesHit/totalPlayed acumulados se dividen
+		-- acá -- promediar el ratingPercent de cada canción por separado
+		-- daría un resultado incorrecto si las canciones tienen distinta
+		-- cantidad de notas.
+		local weekAccuracy = 0
+		if _G.weekTotalPlayed and _G.weekTotalPlayed > 0 then
+			weekAccuracy = math.min(1, math.max(0, (_G.weekTotalNotesHit or 0) / _G.weekTotalPlayed))
+		end
+
 		return {
 			diff = diff,
 			song = _G.currentSongName or self.songName or "unknown",
@@ -2943,12 +3412,17 @@ drawUI = function(self)
 			artist = _G.currentArtist or nil,
 			scores = {
 				score       = _G.storyMode and (_G.weekTotalScore or 0) or score,
-				sickCount   = self.ratingsData.sick.hits,
-				goodCount   = self.ratingsData.good.hits,
-				badCount    = self.ratingsData.bad.hits,
-				shitCount   = self.ratingsData.shit.hits,
-				missedCount = misses,
-				maxCombo    = self.maxCombo or 0,
+				sickCount   = _G.storyMode and (_G.weekTotalSick or 0) or self.ratingsData.sick.hits,
+				goodCount   = _G.storyMode and (_G.weekTotalGood or 0) or self.ratingsData.good.hits,
+				badCount    = _G.storyMode and (_G.weekTotalBad or 0) or self.ratingsData.bad.hits,
+				shitCount   = _G.storyMode and (_G.weekTotalShit or 0) or self.ratingsData.shit.hits,
+				missedCount = _G.storyMode and (_G.weekTotalMissed or 0) or misses,
+				maxCombo    = _G.storyMode and (_G.weekMaxCombo or 0) or (self.maxCombo or 0),
+				-- Mismo ratingPercent que se muestra en vivo durante el gameplay
+				-- (HUD, recalculateRating()) -- states/results.lua lo usa directo
+				-- en vez de recalcular el accuracy con otra fórmula/otros pesos,
+				-- que antes daba un % distinto al del HUD para la misma partida.
+				accuracy    = _G.storyMode and weekAccuracy or (self.ratingPercent or 0),
 			}
 		}
 	end,
@@ -3040,20 +3514,6 @@ drawUI = function(self)
 			splashCustomAnim     = "splash"
 			splashCustomIsPixel  = false
 		end
-		-- Apagar flags ANTES de destruir los sprites, por si drawUI
-		-- se llama durante el fade-out después de leave
-		holdActive             = {false, false, false, false}
-		holdSplashVisible      = {false, false, false, false}
-		enemyHoldActive        = {false, false, false, false}
-		enemyHoldSplashVisible = {false, false, false, false}
-		if holdSplashArrows then
-			for i = 1, #holdSplashArrows do holdSplashArrows[i] = nil end
-			holdSplashArrows = {}
-		end
-		if enemyHoldSplashArrows then
-			for i = 1, #enemyHoldSplashArrows do enemyHoldSplashArrows[i] = nil end
-			enemyHoldSplashArrows = {}
-		end
 
 		-- Liberar notas (tablas anidadas)
 		if enemyNotes then
@@ -3092,6 +3552,10 @@ drawUI = function(self)
 			-- Importante: mantener la tabla, solo vaciarla
 			spriteTimers = {}
 		end
+		for id, t in pairs(spriteLoopTimers) do
+			Timer.cancel(t)
+			spriteLoopTimers[id] = nil
+		end
 
 		-- Limpiar grupos y botplay
 		holdGroupsInfo = {}
@@ -3111,8 +3575,9 @@ drawUI = function(self)
 		boyfriend = nil
 		enemy = nil
 		fakeBoyfriend = nil
-		rating = nil
-		numbers = nil
+		ratingLoaderFn = nil
+		numbersLoaderFn = nil
+		activeRatingPopups = {}
 		countdown = nil
 		enemyIcon = nil
 		boyfriendIcon = nil
@@ -3123,6 +3588,7 @@ drawUI = function(self)
 		if images then
 			images.notes        = nil
 			images.numbers      = nil
+			images.rating       = nil
 			images.noteSplashes = nil
 			images.icons        = nil
 			-- timeBar es shared, se libera con self._sharedTimeBar
@@ -3139,6 +3605,45 @@ drawUI = function(self)
     getBPM = function() return bpm end,
     getMusicTime = function() return musicTime end,
     cameraEvents = cameraEvents,
+
+    -- Expone bfCamTarget()/enemyCamTarget() (locales a este archivo) para
+    -- que un stage (p.ej. stages/military/stage.lua, cutscenes de semana 7)
+    -- pueda enfocar la cámara en boyfriend/enemy sin reinventar la fórmula
+    -- (offsets de personaje, camera_position, stageOffset, escala...).
+    getBfCamTarget = function(self) return bfCamTarget() end,
+    getEnemyCamTarget = function(self) return enemyCamTarget() end,
+
+    -- Expone la MISMA tabla guiAlphaObj (local a este archivo) -- al ser
+    -- una tabla, el llamador puede mutar guiAlphaObj.value directamente y
+    -- el cambio se ve acá también (son la misma referencia). Usado por
+    -- cutscenes (p.ej. stages/military/stage.lua) para ocultar el HUD
+    -- igual que camHUD.visible=false en Psych real.
+    getGuiAlphaObj = function(self) return guiAlphaObj end,
+
+    -- Réplica exacta de los eventos "HighlightOn"/"HighlightOff" de
+    -- cameraEvents (ver el for de más arriba) -- extraído a método para que
+    -- un stage con su propio chart Psych (p.ej. data/too-slow/events.json,
+    -- que NO pasa por cameraEvents) pueda dispararlo vía
+    -- charts/psych/events.lua:M.registerHandler sin duplicar la lógica de
+    -- guiAlphaObj.
+    --
+    -- A pedido: Highlight ya NO toca la cámara para nada (antes tweemeaba
+    -- cam.x/y hacia bf/enemy y suspendía el auto-cam con highlightActive
+    -- mientras durara -- eso es justo lo que causaba el bamboleo al soltar,
+    -- por más que se le corrigiera el cálculo del objetivo). Ahora el
+    -- evento queda reducido a lo único que se pidió: mostrar/ocultar el
+    -- HUD. El auto-cam (seguimiento bf/enemy por mustHitSection) sigue
+    -- corriendo siempre, sin interrupción, exactamente igual que si
+    -- Highlight no existiera.
+    setHighlight = function(self, on, target)
+        if guiAlphaTween then Timer.cancel(guiAlphaTween) end
+        guiAlphaTween = Timer.tween(0.5, guiAlphaObj, {value = on and 0 or 1}, "linear", function() guiAlphaTween = nil end)
+    end,
+
+    -- Reloj de beat independiente para cutscenes (ver triggerDanceBeat()
+    -- más arriba) -- hace bailar a girlfriend/enemy/boyfriend sin depender
+    -- de musicTime (congelado por _G.cutscenePause durante una cutscene).
+    triggerDanceBeat = function(self) triggerDanceBeat() end,
 
 	getSpriteTimer = function(self, id)
 		return spriteTimers[id]
@@ -3199,6 +3704,7 @@ drawUI = function(self)
 		if images then
 			images.notes        = nil
 			images.numbers      = nil
+			images.rating       = nil
 			images.noteSplashes = nil
 			-- icons no cambia entre modos; se reutiliza abajo
 			local savedIcons   = images.icons
@@ -3225,6 +3731,8 @@ drawUI = function(self)
 			local notesImg = styleLoader()
 			local numbersImgPixel = love.graphics.newImage(graphics.imagePath("pixel/numbers"))
 			numbersImgPixel:setFilter("nearest", "nearest")
+			local ratingImgPixel = love.graphics.newImage(graphics.imagePath("pixel/rating"))
+			ratingImgPixel:setFilter("nearest", "nearest")
 			sounds = {
 				countdown = {
 					three = love.audio.newSource("sounds/pixel/countdown-3.ogg", "static"),
@@ -3241,6 +3749,7 @@ drawUI = function(self)
 			}
 			images.notes        = notesImg
 			images.numbers      = numbersImgPixel
+			images.rating       = ratingImgPixel
 			images.noteSplashes = notesImg
 			sprites = {
 				icons   = love.filesystem.load("sprites/icons.lua"),
@@ -3263,6 +3772,7 @@ drawUI = function(self)
 			}
 			images.notes        = love.graphics.newImage(graphics.imagePath("notes"))
 			images.numbers      = love.graphics.newImage(graphics.imagePath("numbers"))
+			images.rating       = love.graphics.newImage(graphics.imagePath("rating"))
 			images.noteSplashes = love.graphics.newImage(graphics.imagePath("noteSplashes"))
 			sprites = {
 				icons   = love.filesystem.load("sprites/icons.lua"),
@@ -3332,65 +3842,32 @@ drawUI = function(self)
 	end,
 
 	recreateSplashes = function(self)
-		-- Reconstruir hold-splashes (sin cambios)
-		holdSplashArrows = { sprites.holdSplashLeft(), sprites.holdSplashDown(), sprites.holdSplashUp(), sprites.holdSplashRight() }
-		enemyHoldSplashArrows = { sprites.holdSplashLeft(), sprites.holdSplashDown(), sprites.holdSplashUp(), sprites.holdSplashRight() }
-
-		local scale = _G.isPixelWeek and NoteSize or 1.5
-		for i = 1, 4 do
-			holdSplashArrows[i].sizeX, holdSplashArrows[i].sizeY = scale, scale
-			enemyHoldSplashArrows[i].sizeX, enemyHoldSplashArrows[i].sizeY = scale, scale
-			holdSplashArrows[i].x = boyfriendArrows[i].x
-			holdSplashArrows[i].y = boyfriendArrows[i].y
-			enemyHoldSplashArrows[i].x = enemyArrows[i].x
-			enemyHoldSplashArrows[i].y = enemyArrows[i].y
-			holdSplashVisible[i] = false
-			enemyHoldSplashVisible[i] = false
-			enemyHoldActive[i] = false
-		end
-
 		-- Descartar instancias activas; actualizar loaders al modo actual
 		-- (si hay un custom splash activo, resetDefaultSplashLoaders lo respeta)
 		activeSplashes = {{}, {}, {}, {}}
 		resetDefaultSplashLoaders()
 	end,
 
+	-- Ya no hay un único "rating"/"numbers" para migrar (ver
+	-- spawnRatingPopup/activeRatingPopups) -- esto sólo actualiza los
+	-- loaders y la escala para que los PRÓXIMOS popups usen el modo
+	-- correcto. Los popups ya en pantalla en este instante (viven ~0.2s)
+	-- se quedan con su sprite/escala viejo hasta que terminen de
+	-- desvanecerse -- no vale la pena migrarlos en caliente por algo tan
+	-- breve.
 	recreateRatingAndNumbers = function(self)
-		-- Guardar posición y visibilidad del rating actual
-		local oldRatingX, oldRatingY = rating.x, rating.y
-		local oldRatingVis = ratingVisibility[1]
-		local oldNumbers = {}
-		for i = 1, 3 do
-			oldNumbers[i] = { x = numbers[i].x, y = numbers[i].y }
-		end
-
-		-- Crear nuevo rating y números
+		-- /0.7: ver comentario completo en enter().
 		if _G.isPixelWeek then
-			rating = love.filesystem.load("sprites/pixel/rating.lua")()
-			rating.sizeX, rating.sizeY = NoteSize * 0.75, NoteSize * 0.75
-			numbers = {}
-			for i = 1, 3 do
-				numbers[i] = love.filesystem.load("sprites/pixel/numbers.lua")()
-				numbers[i].sizeX, numbers[i].sizeY = NoteSize * 0.5, NoteSize * 0.5
-			end
+			ratingLoaderFn = love.filesystem.load("sprites/pixel/rating.lua")
+			numbersLoaderFn = love.filesystem.load("sprites/pixel/numbers.lua")
+			ratingScaleX, ratingScaleY = NoteSize * 0.75 / 0.7, NoteSize * 0.75 / 0.7
+			numberScaleX, numberScaleY = NoteSize * 0.5 / 0.7, NoteSize * 0.5 / 0.7
 		else
-			rating = love.filesystem.load("sprites/rating.lua")()
-			rating.sizeX, rating.sizeY = 0.75, 0.75
-			numbers = {}
-			for i = 1, 3 do
-				numbers[i] = love.filesystem.load("sprites/numbers.lua")()
-				numbers[i].sizeX, numbers[i].sizeY = 0.5, 0.5
-			end
+			ratingLoaderFn = love.filesystem.load("sprites/rating.lua")
+			numbersLoaderFn = love.filesystem.load("sprites/numbers.lua")
+			ratingScaleX, ratingScaleY = 0.75 / 0.7, 0.75 / 0.7
+			numberScaleX, numberScaleY = 0.5 / 0.7, 0.5 / 0.7
 		end
-
-		-- Restaurar posiciones
-		rating.x = oldRatingX
-		rating.y = oldRatingY
-		for i = 1, 3 do
-			numbers[i].x = oldNumbers[i].x
-			numbers[i].y = oldNumbers[i].y
-		end
-		ratingVisibility[1] = oldRatingVis
 	end,
 
 	recreateCountdown = function(self)
@@ -3541,7 +4018,6 @@ drawUI = function(self)
 	loadArrowSprites = function(self)
 		local arrowPath = _G.isPixelWeek and "sprites/pixel/" or "sprites/"
 		local splashPath = _G.isPixelWeek and "sprites/pixel/" or "sprites/"
-		local holdSplashPath = _G.isPixelWeek and "sprites/pixel/" or "sprites/"
 
 		sprites.leftArrow = love.filesystem.load(arrowPath .. "left-arrow.lua")
 		sprites.downArrow = love.filesystem.load(arrowPath .. "down-arrow.lua")
@@ -3552,11 +4028,6 @@ drawUI = function(self)
 		sprites.splashDown = love.filesystem.load(splashPath .. "splash-down.lua")
 		sprites.splashUp = love.filesystem.load(splashPath .. "splash-up.lua")
 		sprites.splashRight = love.filesystem.load(splashPath .. "splash-right.lua")
-
-		sprites.holdSplashLeft = love.filesystem.load(holdSplashPath .. "HoldSplash-left.lua")
-		sprites.holdSplashDown = love.filesystem.load(holdSplashPath .. "HoldSplash-down.lua")
-		sprites.holdSplashUp = love.filesystem.load(holdSplashPath .. "HoldSplash-up.lua")
-		sprites.holdSplashRight = love.filesystem.load(holdSplashPath .. "HoldSplash-right.lua")
 	end,
 
 	-- ============================================================

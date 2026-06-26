@@ -29,6 +29,10 @@ local function getOptionsList()
     -- Añadimos las opciones restantes para ambas plataformas
     table.insert(list, {name = "Show Debug", value = settings.showDebug, type = "choice", choices = {false, "fps", "detailed"}})
     table.insert(list, {name = "Timebar Mode", value = settings.timebarMode, type = "choice", choices = {"elapsed", "remaining", "songname", "none"}})
+    -- Usa texturas .dds (comprimidas, menos VRAM/RAM y carga más rápido) en
+    -- vez de .png -- requiere reiniciar el juego para aplicarse, porque las
+    -- imágenes ya cargadas en memoria no se recargan en caliente.
+    table.insert(list, {name = "Hardware Compression (restart required)", value = settings.hardwareCompression, type = "boolean"})
 
     return list
 end
@@ -195,6 +199,8 @@ local function setBooleanWithAnimation(index, newValue)
     elseif opt.name == "Fullscreen" then
         love.window.setFullscreen(newValue)
         relayout()  -- AHORA SÍ ESTÁ DEFINIDA
+    elseif opt.name == "Hardware Compression (restart required)" then
+        settings.hardwareCompression = newValue
     end
 end
 
@@ -206,6 +212,7 @@ local function saveSettings()
     ini.writeKey(settingsIni, "Game", "dfjk", tostring(settings.dfjk))
     ini.writeKey(settingsIni, "Game", "timebarMode", tostring(settings.timebarMode))
     ini.writeKey(settingsIni, "Video", "fullscreen", tostring(love.window.getFullscreen()))
+    ini.writeKey(settingsIni, "Video", "hardwareCompression", tostring(settings.hardwareCompression))
     ini.writeKey(settingsIni, "Advanced", "showDebug", tostring(settings.showDebug))
     ini.save(settingsIni, "settings.ini")
 end

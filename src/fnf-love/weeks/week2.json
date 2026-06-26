@@ -7,6 +7,7 @@
 
 	"weekCharacters": ["spooky", "bf", "gf"],
 	"weekBackground": "spooky",
+	"storyMenuBackground": "halloween",
 
 	"weekName": "Week 2",
 	"storyName": "Spooky Month",

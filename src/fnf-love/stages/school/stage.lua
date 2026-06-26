@@ -95,7 +95,7 @@ end)
 psychEvents.registerHandler("Trigger BG Ghouls", function()
     if bgGhouls then
         bgGhouls.visible = true
-        bgGhouls:animate("anim", false, function()
+        bgGhouls:animate("BG freaks glitch instance", false, function()
             bgGhouls.visible = false
         end)
     end
@@ -145,7 +145,7 @@ function M.load(songNum)
         petals = love.filesystem.load("sprites/week6/petals.lua")()
         petals.sizeX, petals.sizeY = PIXEL_ZOOM, PIXEL_ZOOM
         petals.x, petals.y = 730, 440  -- Psych (-200,-40), sf=(0.85,0.85)
-        petals:animate("anim", true)
+        petals:animate("PETALS ALL", true)
 
         -- School.hx: bgGirls = new BackgroundGirls(-100, 190); sf=(0.9,0.9)
         freaks = bgsprite.new("week6/bgFreaks", -100, 190, freaksAnimDefs(), false, PIXEL_ZOOM)
@@ -196,7 +196,7 @@ function M.startThornsIntro()
     senpaiCrazy = love.filesystem.load("sprites/week6/senpaiCrazy.lua")()
     senpaiCrazy.sizeX, senpaiCrazy.sizeY = PIXEL_ZOOM, PIXEL_ZOOM
     senpaiCrazy.x, senpaiCrazy.y = -50 * PIXEL_ZOOM, 0
-    senpaiCrazy:animate("anim", false)
+    senpaiCrazy:animate("idle", false)
 
     cam.x, cam.y = 90 * PIXEL_ZOOM, -5 * PIXEL_ZOOM
     cam.sizeX, cam.sizeY = 0.8, 0.8

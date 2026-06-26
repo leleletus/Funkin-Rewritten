@@ -57,13 +57,33 @@ function love.load()
 	weekLoader = require "modules.weekLoader"
 
 	-- Load week data — driven by weeks/weekList.txt (Psych Engine-style)
-	-- To add a week or mod: create weeks/{id}.json + weeks/{id}.lua, add id to weekList.txt
+	-- To add a week or mod: create weeks/{id}.json, add id to weekList.txt.
+	-- weeks/{id}.lua is now OPTIONAL (Fase 1 de la refactorización de
+	-- ergonomía de modding, ver memoria del proyecto
+	-- "modding-ergonomics-refactor") -- semanas simples (un stage fijo,
+	-- sin lógica propia) funcionan solo con el JSON, vía
+	-- modules/genericWeek.lua (modules/weekLoader.lua lo usa de
+	-- fallback al cargar de verdad). ESTE loop de acá es solo "calentar
+	-- la caché de require()" -- no tiene ningún consumidor real más allá
+	-- de un comentario en storymenu.lua (confirmado por grep) -- así que
+	-- semanas sin .lua simplemente no entran a este loop, no hay nada
+	-- que cachear para ellas.
+	--
+	-- BUG corregido: el pcall absorbía CUALQUIER error en silencio, sin
+	-- avisar ni la semana ni el motivo -- se mantiene el pcall (sacarlo
+	-- arriesgaría que UNA semana rota tire abajo el arranque del juego
+	-- ENTERO para todos los usuarios, un costo mucho mayor que el
+	-- beneficio de visibilidad) pero ahora se imprime un aviso claro.
 	local wmd = require("modules.weekMetadata")
 	weekData = {}
 	for _, week in ipairs(wmd.weeks) do
-		local ok, mod = pcall(require, "weeks." .. week.id)
-		if ok then
-			table.insert(weekData, mod)
+		if love.filesystem.getInfo("weeks/" .. week.id .. ".lua") then
+			local ok, mod = pcall(require, "weeks." .. week.id)
+			if ok then
+				table.insert(weekData, mod)
+			else
+				print("WARN: error al precargar la semana '" .. week.id .. "': " .. tostring(mod))
+			end
 		end
 	end
 

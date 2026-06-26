@@ -51,11 +51,11 @@ function M.load()
 
     bgLimo = love.filesystem.load("sprites/week4/bg-limo.lua")()
     bgLimo.x, bgLimo.y = 940, 667  -- Psych (-150,480), sf=(0.4,0.4)
-    bgLimo:animate("anim", true)
+    bgLimo:animate("background limo pink", true)
 
     limo = love.filesystem.load("sprites/week4/limo.lua")()
     limo.x, limo.y = 904, 873  -- Psych (-120,550), sf=(1,1)
-    limo:animate("anim", true)
+    limo:animate("Limo stage", true)
 
     -- Limo.hx: 5 bailarines, espaciados 370px, x = 370*i + 320 + bgLimo.x(Psych=-150)
     dancers = {}

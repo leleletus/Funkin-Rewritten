@@ -17,6 +17,13 @@
 --                por sprites con varias animaciones compartiendo el mismo
 --                prefijo de región (p.ej. freaks.lua: danceLeft/danceRight
 --                dentro de la misma región "BG girls group").
+--              - una tabla {name=, prefix=} SIN indices: replica
+--                animation.addByPrefix(name, prefix, fps, loop) con name
+--                DISTINTO de prefix -- todos los frames del prefijo, en
+--                orden natural del atlas, pero con un nombre de animación
+--                custom. Usado por subclases de BGSprite que renombran una
+--                animación (p.ej. MallCrowd.hx: addByPrefix('hey',
+--                'Bottom Level Boppers HEY', ...)).
 --              La primera entrada de la lista se reproduce de entrada.
 --   loop:      si las animaciones hacen loop por defecto (BGSprite.hx: false)
 --   scale:     equivalente a setGraphicSize()/scale.set() en Psych (default 1).
@@ -77,8 +84,10 @@ function M.new(image, x, y, animArray, loop, scale, originScale)
 	scale = scale or 1
 	originScale = originScale or scale
 	local pngPath = graphics.imagePath(image)
-	local xmlPath = pngPath:gsub("%.png$", ".xml")
-	local txtPath = pngPath:gsub("%.png$", ".txt")
+	-- El atlas (.xml/.txt) vive junto al .png fuente, nunca como variante
+	-- .dds -- ver el mismo arreglo y explicación en charts/psych/character.lua.
+	local xmlPath = "images/png/" .. image .. ".xml"
+	local txtPath = "images/png/" .. image .. ".txt"
 
 	local img = love.graphics.newImage(pngPath)
 
@@ -102,10 +111,21 @@ function M.new(image, x, y, animArray, loop, scale, originScale)
 
 		if type(entry) == "table" then
 			name = entry.name
-			matched = {}
-			for _, index in ipairs(entry.indices) do
-				local frame = frameByExactName(allFrames, ("%s%04d"):format(entry.prefix, index))
-				if frame then table.insert(matched, frame) end
+			if entry.indices then
+				matched = {}
+				for _, index in ipairs(entry.indices) do
+					local frame = frameByExactName(allFrames, ("%s%04d"):format(entry.prefix, index))
+					if frame then table.insert(matched, frame) end
+				end
+			else
+				-- Sin indices: todos los frames del prefijo, en orden natural
+				-- del atlas, con nombre custom -- igual que
+				-- animation.addByPrefix(nombreCustom, prefijo, fps, loop) en
+				-- Psych real (BGSprite.hx solo soporta nombre==prefijo, pero
+				-- subclases como MallCrowd.hx SÍ llaman addByPrefix con un
+				-- nombre distinto del prefijo, p.ej. addByPrefix('hey',
+				-- 'Bottom Level Boppers HEY', ...) -- esto replica ESE caso).
+				matched = framesByPrefix(allFrames, entry.prefix)
 			end
 		else
 			name = entry
@@ -115,19 +135,40 @@ function M.new(image, x, y, animArray, loop, scale, originScale)
 		if #matched > 0 then
 			local start = #frameData + 1
 			for _, frame in ipairs(matched) do
+				-- rotated=true: ver el comentario completo en
+				-- charts/psych/character.lua (misma lógica) -- width/height
+				-- del XML describen el rectángulo tal como está empacado en
+				-- la hoja, hay que intercambiarlos para obtener el tamaño
+				-- LÓGICO que espera el resto del motor.
+				local fw, fh = frame.width, frame.height
+				if frame.rotated then fw, fh = fh, fw end
+
 				table.insert(frameData, {
 					x = frame.x,
 					y = frame.y,
-					width = frame.width,
-					height = frame.height,
+					width = fw,
+					height = fh,
 					offsetX = frame.frameX,
 					offsetY = frame.frameY,
 					offsetWidth = frame.frameWidth,
 					offsetHeight = frame.frameHeight,
+					rotated = frame.rotated,
 				})
 			end
 
-			animData[name] = { start = start, stop = #frameData, speed = 24, offsetX = 0, offsetY = 0 }
+			-- entry.fps/offsetX/offsetY: opcionales, default 24/0/0 (sin
+			-- cambios para todo llamador existente, que nunca los pasa).
+			-- Necesario para sprites con offsets grandes y distintos por
+			-- pose (p.ej. Pico_Shooting/Pico_Intro de Weekend 1 -- "shoot"
+			-- offsets=[256,232] en el JSON real de Psych).
+			local entryOpts = (type(entry) == "table") and entry or nil
+			animData[name] = {
+				start = start,
+				stop = #frameData,
+				speed = (entryOpts and entryOpts.fps) or 24,
+				offsetX = (entryOpts and entryOpts.offsetX) or 0,
+				offsetY = (entryOpts and entryOpts.offsetY) or 0,
+			}
 
 			if not firstAnim then firstAnim = name end
 		else

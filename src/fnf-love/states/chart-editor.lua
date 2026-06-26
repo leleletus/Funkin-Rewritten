@@ -99,9 +99,24 @@ local EVENT_CATALOG = {
 	{name = "Hide HUD", desc = "Oculta la interfaz de juego (no implementado)", implemented = false},
 }
 
--- Personajes/stages disponibles para ciclar (registro de charts/psych/*)
+-- Personajes/stages disponibles para ciclar (registro de charts/psych/* +
+-- escaneo en vivo de characters/, Fase 2 de la refactorización de
+-- ergonomía de modding: un characters/<id>.json sin entrada en REGISTRY ya
+-- es jugable, así que también debe poder elegirse acá -- mismo patrón ya
+-- usado por states/character-offset-debug.lua para su propio browser).
 local CHARACTER_NAMES = {}
-for name in pairs(psychCharacters.REGISTRY) do table.insert(CHARACTER_NAMES, name) end
+local characterNameSet = {}
+for name in pairs(psychCharacters.REGISTRY) do
+	table.insert(CHARACTER_NAMES, name)
+	characterNameSet[name] = true
+end
+for _, item in ipairs(love.filesystem.getDirectoryItems("characters")) do
+	local id = item:match("^(.+)%.json$")
+	if id and not characterNameSet[id] then
+		table.insert(CHARACTER_NAMES, id)
+		characterNameSet[id] = true
+	end
+end
 table.sort(CHARACTER_NAMES)
 
 local STAGE_NAMES = {}
@@ -670,19 +685,18 @@ local function stripDifficulty(name)
 	return name
 end
 
--- Busca <base>-inst.ogg (y su -voices.ogg) en cualquier subcarpeta de music/.
--- Si no se encuentra y "base" tiene guiones (p.ej. "dad-battle"), reintenta
--- sin ellos ("dadbattle"), ya que algunos nombres de archivo de audio no
--- coinciden con el nombre de la canción/carpeta del chart.
+-- Busca music/<base>/Inst.ogg (y su Voices.ogg) -- una carpeta por canción,
+-- igual que Psych Engine real (assets/.../songs/<base>/Inst.ogg), ya no por
+-- semana. Si no se encuentra y "base" tiene guiones (p.ej. "dad-battle"),
+-- reintenta sin ellos ("dadbattle"), ya que algunos nombres de carpeta de
+-- audio no coinciden con el nombre de la canción/carpeta del chart.
 local function findAudio(base)
 	if not love.filesystem.getInfo("music") then return nil, nil end
 
-	for _, dir in ipairs(love.filesystem.getDirectoryItems("music")) do
-		local instPath = "music/" .. dir .. "/" .. base .. "-inst.ogg"
-		if love.filesystem.getInfo(instPath) then
-			local voxPath = "music/" .. dir .. "/" .. base .. "-voices.ogg"
-			return instPath, love.filesystem.getInfo(voxPath) and voxPath or nil
-		end
+	local instPath = "music/" .. base .. "/Inst.ogg"
+	if love.filesystem.getInfo(instPath) then
+		local voxPath = "music/" .. base .. "/Voices.ogg"
+		return instPath, love.filesystem.getInfo(voxPath) and voxPath or nil
 	end
 
 	if base:find("-") then
@@ -825,7 +839,12 @@ local function loadChart(relPath)
 	end
 
 	rawDecoded = decoded
-	song = rawDecoded.song or rawDecoded
+	-- BUG real (formato "psych_v1_convert" de Psych Engine nuevo): "song"
+	-- ahí es el STRING del título, no una tabla anidada -- tratarlo como
+	-- wrapper sin chequear el tipo hacía que `song` terminara siendo ese
+	-- string, y `song.notes` explotaba. Ver charts/psych/loader.lua:
+	-- unwrapSongData() (mismo fix, mismo bug).
+	song = (type(rawDecoded.song) == "table" and rawDecoded.song) or rawDecoded
 	song.notes = song.notes or {}
 	song.events = song.events or {}
 	for _, sec in ipairs(song.notes) do
@@ -1815,7 +1834,11 @@ local function drawNotes()
 				love.graphics.setColor(1, 1, 1)
 			end
 
-			if n.typeStr and n.typeStr ~= "" then
+			-- BUG real (Too Slow): algunos charts (too-slow-hard.json) usan 0
+			-- como "sin tipo" en vez de "" o ausente -- 0 es truthy en Lua y
+			-- 0~="" también es true, así que la condición vieja pasaba para
+			-- un NÚMERO y :sub() explotaba ("attempt to index a number").
+			if n.typeStr and type(n.typeStr) == "string" and n.typeStr ~= "" then
 				love.graphics.setColor(0, 0, 0)
 				love.graphics.print(n.typeStr:sub(1, 1), x - 4, y - 30)
 				love.graphics.setColor(1, 1, 1)

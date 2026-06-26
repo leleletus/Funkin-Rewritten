@@ -9,6 +9,7 @@
 
 local animnames = require("charts.psych.animnames")
 local characters = require("charts.psych.characters")
+local icons = require("sprites.icons")
 
 local M = {}
 
@@ -161,11 +162,21 @@ handlers["Change Character"] = function(ev)
 	local _, slot = spriteFor(ev.value1)
 	local ok, entry = characters.loadInto(slot, ev.value2)
 
-	if ok and entry and entry.icon then
-		if slot == "enemy" and enemyIcon then
-			enemyIcon:animate(entry.icon, false)
-		elseif slot == "boyfriend" and boyfriendIcon then
-			boyfriendIcon:animate(entry.icon, false)
+	if ok and entry then
+		-- BUG corregido (round 45): preferir el "healthicon" ya corregido
+		-- del propio JSON del personaje (charts/psych/character.lua:
+		-- sprite.psychChar.healthicon) sobre entry.icon (la tabla
+		-- registro) -- mismo patrón que states/weeks.lua:
+		-- healthIconNameFor(), ver el comentario completo ahí.
+		local sprite = (slot == "enemy") and enemy or (slot == "boyfriend") and boyfriend or nil
+		local psychChar = sprite and sprite.psychChar
+		local iconName = (psychChar and psychChar.healthicon) or entry.icon
+		if iconName then
+			if slot == "enemy" and enemyIcon then
+				icons.animate(enemyIcon, iconName, false)
+			elseif slot == "boyfriend" and boyfriendIcon then
+				icons.animate(boyfriendIcon, iconName, false)
+			end
 		end
 	end
 end

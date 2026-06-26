@@ -5,6 +5,7 @@
 
 	"weekCharacters": ["gf", "bf", "gf"],
 	"weekBackground": "stage",
+	"storyMenuBackground": "stage",
 
 	"weekName": "Tutorial",
 	"storyName": "Tutorial",

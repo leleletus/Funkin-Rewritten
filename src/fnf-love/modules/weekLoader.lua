@@ -38,6 +38,7 @@ function weekLoader.loadCharactersForSong(weekId, songIndex, songAppend)
     local json       = require("lib.json")
     local wmd        = require("modules.weekMetadata")
     local psychChars = require("charts.psych.characters")
+    local icons      = require("sprites.icons")
 
     local weekMeta
     for _, w in ipairs(wmd.weeks) do
@@ -69,8 +70,16 @@ function weekLoader.loadCharactersForSong(weekId, songIndex, songAppend)
 
     if player2 then
         local ok, entry = psychChars.loadInto("enemy", player2)
-        if ok and entry and entry.icon and _G.enemyIcon then
-            _G.enemyIcon:animate(entry.icon, false)
+        if ok and entry then
+            -- BUG corregido (round 45): preferir el "healthicon" ya
+            -- corregido del propio JSON del personaje sobre entry.icon
+            -- (la tabla registro) -- mismo patrón que states/weeks.lua:
+            -- healthIconNameFor(), ver el comentario completo ahí.
+            local psychChar = _G.enemy and _G.enemy.psychChar
+            local iconName = (psychChar and psychChar.healthicon) or entry.icon
+            if iconName and _G.enemyIcon then
+                icons.animate(_G.enemyIcon, iconName, false)
+            end
         end
     end
     if player1   then psychChars.loadInto("boyfriend",  player1)   end
@@ -86,7 +95,25 @@ function weekLoader.startFromMenu(weekId, songIndex, songAppend, isStoryMode, so
 end
 
 function weekLoader.loadWeek(weekId, songIndex, songAppend, isStoryMode, songName)
-    local weekModule = require("weeks." .. weekId)
+    -- BUG corregido (Fase 1 de la refactorización de ergonomía de modding,
+    -- ver memoria del proyecto "modding-ergonomics-refactor"): antes, una
+    -- semana sin weeks/<id>.lua simplemente crasheaba acá (require sin
+    -- fallback) -- ahora, si el archivo NO EXISTE en disco, se cae a
+    -- modules/genericWeek.lua (data-driven, lee todo de weeks/<id>.json,
+    -- igual que WeekData.hx+PlayState.hx en Psych real). La decisión es
+    -- por EXISTENCIA DE ARCHIVO, no por pcall alrededor del require: si
+    -- se usara pcall, una semana CON .lua genuinamente rota (error de
+    -- sintaxis o runtime real) sería absorbida en silencio y reemplazada
+    -- por el genérico -- exactamente lo opuesto a "que los errores de
+    -- semanas custom rotas sigan siendo visibles". Con el chequeo de
+    -- archivo, una semana CON .lua roto sigue fallando fuerte, sin
+    -- cambio de comportamiento ahí.
+    local weekModule
+    if love.filesystem.getInfo("weeks/" .. weekId .. ".lua") then
+        weekModule = require("weeks." .. weekId)
+    else
+        weekModule = require("modules.genericWeek").create(weekId)
+    end
     local weekState = {}
     for k, v in pairs(weekModule) do weekState[k] = v end
     weekState.isStoryMode = isStoryMode

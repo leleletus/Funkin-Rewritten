@@ -65,6 +65,41 @@ function highscores.setFreeplayScore(songKey, difficulty, score)
     end
 end
 
+-- Porcentaje (accuracy, 0-1) asociado a la PERSONAL BEST de freeplay -- igual
+-- que Psych Engine (Highscore.hx), que guarda accuracy/rank junto con el
+-- score de la misma partida, no como un máximo independiente. Por eso esto
+-- se guarda siempre que setFreeplayScore guarda un nuevo récord (mismo
+-- gating, ver states/weeks.lua) y nunca por separado.
+function highscores.getFreeplayAccuracy(songKey, difficulty)
+    local data = readAllScores()
+    local key = songKey .. ":" .. difficulty
+    return tonumber(ini.readKey(data, "FreeplayAccuracy", key)) or 0
+end
+
+function highscores.setFreeplayAccuracy(songKey, difficulty, accuracy)
+    local data = readAllScores()
+    local key = songKey .. ":" .. difficulty
+    ini.writeKey(data, "FreeplayAccuracy", key, tostring(accuracy))
+    saveAllScores(data)
+end
+
+-- Persistencia de "semana completada" para el sistema de bloqueo del
+-- StoryMenu (port 1:1 de StoryMenuState.weekCompleted / PlayState.hx:2468
+-- de Psych real -- ver memoria del proyecto "storymenu-port"). Psych
+-- guarda esto en FlxG.save.data.weekCompleted (un Map persistido con el
+-- save del juego); acá usa el mismo highscores.ini que el resto de
+-- puntuaciones, en su propia sección.
+function highscores.getWeekCompleted(weekId)
+    local data = readAllScores()
+    return ini.readKey(data, "WeekCompleted", weekId) == "true"
+end
+
+function highscores.setWeekCompleted(weekId)
+    local data = readAllScores()
+    ini.writeKey(data, "WeekCompleted", weekId, "true")
+    saveAllScores(data)
+end
+
 -- Crear archivo vacío si no existe
 if not love.filesystem.getInfo("highscores.ini") then
     saveAllScores({})

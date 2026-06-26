@@ -21,6 +21,7 @@ function pause:enter(previous)
 
     if inst then inst:pause() end
     if voices then voices:pause() end
+    if voicesOpponent then voicesOpponent:pause() end
 
     if self.previous and self.previous.popoMasterVideo then
         self.previous.popoMasterVideo:pause()
@@ -194,6 +195,7 @@ function pause:resumeGame()
     end
     if inst then inst:play() end
     if voices then voices:play() end
+    if voicesOpponent then voicesOpponent:play() end
 
     if self.previous and self.previous.popoMasterVideo and self.previous.videoStarted then
         self.previous.popoMasterVideo:play()

@@ -25,6 +25,18 @@ local fadeTimer
 
 local screenWidth, screenHeight
 
+-- Offset de shake de cámara: PURAMENTE visual, sumado al final de
+-- pushParallax() sin tocar cam.x/y para nada. Antes (p.ej. el shake de
+-- "TooSlowShakeFlash" en stages/AngelIsland/stage.lua) el shake escribía
+-- directo en cam.x/y y apagaba _G.disableAutoCam mientras duraba -- al
+-- reactivarla, el seguimiento automático de cámara (que se recrea cada
+-- frame en states/weeks.lua) tenía que "alcanzar" desde la posición
+-- congelada hasta el objetivo real, lo que se veía como un bamboleo feo
+-- en vez de un corte limpio. Con un offset ADITIVO en el dibujado, cam.x/y
+-- nunca se toca -- el seguimiento normal sigue corriendo de fondo sin
+-- interrupción, el shake es pura cosmética encima.
+local shakeOffsetX, shakeOffsetY = 0, 0
+
 return {
 	screenBase = function(width, height)
 		screenWidth, screenHeight = width, height
@@ -34,6 +46,10 @@ return {
 	end,
 	getHeight = function()
 		return screenHeight
+	end,
+
+	setShakeOffset = function(x, y)
+		shakeOffsetX, shakeOffsetY = x or 0, y or 0
 	end,
 
 	-- Aplica la transformación de cámara para una capa de fondo con el
@@ -56,7 +72,10 @@ return {
 		love.graphics.push()
 		love.graphics.translate(w, h)
 		love.graphics.scale(cam.sizeX, cam.sizeY)
-		love.graphics.translate(w * (sfX - 1) + cam.x * sfX, h * (sfY - 1) + cam.y * sfY)
+		love.graphics.translate(
+			w * (sfX - 1) + cam.x * sfX + shakeOffsetX,
+			h * (sfY - 1) + cam.y * sfY + shakeOffsetY
+		)
 	end,
 
 	imagePath = function(path)
@@ -111,6 +130,11 @@ return {
 					y = math.floor(y)
 				end
 
+				-- self.shader: opt-in, nil por defecto -- mismo criterio que
+				-- newSprite() más abajo (usado por el shader HSL de Sserafim
+				-- sobre los props de fondo, que se cargan vía newImage()).
+				if self.shader then love.graphics.setShader(self.shader) end
+
 				love.graphics.draw(
 					image,
 					self.x,
@@ -123,6 +147,8 @@ return {
 					self.shearX,
 					self.shearY
 				)
+
+				if self.shader then love.graphics.setShader() end
 			end
 		}
 
@@ -137,6 +163,14 @@ return {
 		local sheet, sheetWidth, sheetHeight
 
 		local frames = {}
+		-- frameImages[i]: nil para frames normales (se dibujan del `sheet`
+		-- compartido) -- solo se llena para frames con rotated=true (Sparrow/
+		-- TexturePacker pueden empacar un frame rotado 90° para ahorrar
+		-- espacio; Nene.xml de Weekend 1 tiene TODOS sus frames así). Se
+		-- "des-rota" UNA SOLA VEZ a un canvas propio al crear el sprite, en
+		-- vez de hacerlo cada draw() -- ver el loop de construcción de
+		-- `frames` más abajo.
+		local frameImages = {}
 		local frame
 		local anims = animData
 		local anim = {
@@ -205,6 +239,20 @@ return {
 					print("WARN: animación '" .. tostring(animName) .. "' no existe en sprite, ignorando")
 					return
 				end
+
+				-- BUG corregido (mismo patrón que charts/psych/character.lua
+				-- -- ver FlxAnim.hx real, play(): "Force = Force || finished
+				-- || curInstance != curThing.instance"): llamar animate()
+				-- con la MISMA animación que YA está activa no debe
+				-- reiniciar el frame -- antes esto reiniciaba SIEMPRE, sin
+				-- condición. weeks.lua re-dispara la animación de canto en
+				-- cada segmento de una nota larga/hold -- con el reset
+				-- incondicional, cada segmento volvía a frame 1, dejando al
+				-- personaje prácticamente sin animar (o "tieso") durante
+				-- TODA nota sostenida, para CUALQUIER personaje Sparrow, no
+				-- solo los de atlas.
+				local sameAnim = (animName == anim.name) and isAnimated
+
 				anim.name = animName
 				anim.start = anims[animName].start
 				anim.stop = anims[animName].stop
@@ -212,14 +260,36 @@ return {
 				anim.offsetX = anims[animName].offsetX
 				anim.offsetY = anims[animName].offsetY
 
-				frame = anim.start
 				isLooped = loopAnim
+
+				if sameAnim then return end
+
+				frame = anim.start
 				animCallback = callback  -- puede ser nil
 
 				isAnimated = true
 			end,
 			getAnims = function(self)
 				return anims
+			end,
+			-- FASE 3 de la refactorización de ergonomía de modding (ver
+			-- memoria del proyecto "modding-ergonomics-refactor"): registra
+			-- en caliente una animación de UN solo frame respaldada por su
+			-- PROPIA imagen (no el `sheet` compartido del atlas con el que se
+			-- creó este sprite) -- mismo mecanismo que ya usan los frames
+			-- `rotated=true` de Sparrow/TexturePacker más abajo
+			-- (frameImages[i], ya leído por draw() en
+			-- "frameImages[flooredFrame] or sheet"), solo que sin la rotación.
+			-- Pensado para sprites/icons.lua: un ícono nuevo, no registrado
+			-- en su tabla `characters`, se carga y se agrega así, sin tocar
+			-- el resto del sprite ni el atlas combinado.
+			addStandaloneAnim = function(self, animName, image, x, y, w, h)
+				x, y = x or 0, y or 0
+				w, h = w or image:getWidth(), h or image:getHeight()
+				local i = #frames + 1
+				frameImages[i] = image
+				frames[i] = love.graphics.newQuad(x, y, w, h, image:getWidth(), image:getHeight())
+				anims[animName] = { start = i, stop = i, speed = 0, offsetX = 0, offsetY = 0 }
 			end,
 			getAnimName = function(self)
 				return anim.name
@@ -433,8 +503,18 @@ return {
 					local offsetScaleX = self.sizeX ~= 0 and self.sizeX or 1
 					local offsetScaleY = self.sizeY ~= 0 and self.sizeY or 1
 
+					-- self.shader: opt-in, nil por defecto (no afecta a ningún
+					-- sprite existente). Usado por el splash "vanilla" de Psych
+					-- (states/weeks.lua) para el tintado RGB por carril -- el
+					-- mismo mecanismo que Psych real hace con un shader de
+					-- Flixel (NoteSplash.hx:PixelSplashShader), acá vía
+					-- love.graphics.setShader.
+					if self.shader then
+						love.graphics.setShader(self.shader)
+					end
+
 					love.graphics.draw(
-						sheet,
+						frameImages[flooredFrame] or sheet,
 						frames[flooredFrame],
 						x,
 						y,
@@ -446,6 +526,10 @@ return {
 						self.shearX,
 						self.shearY
 					)
+
+					if self.shader then
+						love.graphics.setShader()
+					end
 				end
 			end
 		}
@@ -453,17 +537,62 @@ return {
 		object:setSheet(imageData)
 
 		for i = 1, #frameData do
-			table.insert(
-				frames,
-				love.graphics.newQuad(
-					frameData[i].x,
-					frameData[i].y,
-					frameData[i].width,
-					frameData[i].height,
-					sheetWidth,
-					sheetHeight
+			local fd = frameData[i]
+
+			if fd.rotated then
+				-- TexturePacker/Sparrow "rotated=true": el frame se guardó
+				-- rotado 90° en la hoja para ahorrar espacio -- la región en
+				-- (x,y) mide REALMENTE height x width (ejes intercambiados),
+				-- no width x height. Se "des-rota" UNA vez a un canvas propio
+				-- de tamaño width x height (la orientación correcta), así el
+				-- resto del archivo (offsets, recorte, flip) sigue
+				-- funcionando exactamente igual que con un frame normal.
+				local sheetQuad = love.graphics.newQuad(
+					fd.x, fd.y, fd.height, fd.width, sheetWidth, sheetHeight
 				)
-			)
+				local canvas = love.graphics.newCanvas(fd.width, fd.height)
+				canvas:setFilter(imageData:getFilter())
+
+				love.graphics.push("all")
+				love.graphics.setCanvas(canvas)
+				love.graphics.clear(0, 0, 0, 0)
+				love.graphics.origin()
+				-- Color BLANCO explícito: este horneado pasa UNA sola vez,
+				-- al crear el sprite -- si el color activo de LÖVE en ESE
+				-- momento no era blanco (p.ej. durante un fade-in/out de la
+				-- pantalla de carga, que sí puede estar corriendo mientras
+				-- se cargan personajes en pleno gameplay), el tinte quedaba
+				-- grabado para siempre en el canvas (de ahí que Nene se
+				-- viera negra en gameplay pero bien en el editor de
+				-- offsets, que no pasa por ninguna pantalla de carga).
+				love.graphics.setColor(1, 1, 1, 1)
+				-- Rotar -90° alrededor de (ox=0, oy=fd.height) y trasladar
+				-- por (fd.height, fd.height) -- verificado a mano resolviendo
+				-- la transformación completa de love.graphics.draw() para
+				-- las 4 esquinas del quad fuente: con traslación (0,0) (como
+				-- estaba antes) el contenido caía ENTERO afuera del canvas
+				-- (corrido en -fd.height en ambos ejes) -- de ahí que casi
+				-- ningún frame rotado se viera. Con (fd.height, fd.height)
+				-- las 4 esquinas mapean exactamente a las esquinas del
+				-- canvas [0,fd.width]x[0,fd.height].
+				love.graphics.draw(imageData, sheetQuad, fd.height, fd.height, -math.pi / 2, 1, 1, 0, fd.height)
+				love.graphics.pop()
+
+				frameImages[i] = canvas
+				table.insert(frames, love.graphics.newQuad(0, 0, fd.width, fd.height, fd.width, fd.height))
+			else
+				table.insert(
+					frames,
+					love.graphics.newQuad(
+						fd.x,
+						fd.y,
+						fd.width,
+						fd.height,
+						sheetWidth,
+						sheetHeight
+					)
+				)
+			end
 		end
 
 		object:animate(animName, loopAnim)

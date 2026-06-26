@@ -7,6 +7,7 @@
 
 	"weekCharacters": ["pico", "bf", "gf"],
 	"weekBackground": "philly",
+	"storyMenuBackground": "philly",
 
 	"weekName": "Week 3",
 	"storyName": "Pico",

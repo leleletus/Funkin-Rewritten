@@ -1,0 +1,398 @@
+{
+	"healthbar_colors": [
+		49,
+		176,
+		209
+	],
+	"image": "characters/sserafim/sakura",
+	"position": [
+		0,
+		0
+	],
+	"camera_position": [
+		0,
+		0
+	],
+	"flip_x": true,
+	"healthicon": "boyfriend",
+	"animations": [
+		{
+			"anim": "idle",
+			"name": "sakura",
+			"loop": true,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				0,
+				14
+			]
+		},
+		{
+			"anim": "singLEFT",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				15,
+				28
+			]
+		},
+		{
+			"anim": "singDOWN",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				59,
+				73
+			]
+		},
+		{
+			"anim": "singUP",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				43,
+				58
+			]
+		},
+		{
+			"anim": "singRIGHT",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				29,
+				42
+			]
+		},
+		{
+			"anim": "singLEFTmiss",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				238,
+				251
+			]
+		},
+		{
+			"anim": "singDOWNmiss",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				281,
+				294
+			]
+		},
+		{
+			"anim": "singUPmiss",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				266,
+				280
+			]
+		},
+		{
+			"anim": "singRIGHTmiss",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				252,
+				265
+			]
+		},
+		{
+			"anim": "singLEFT-joint",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				77,
+				88
+			]
+		},
+		{
+			"anim": "singDOWN-joint",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				117,
+				129
+			]
+		},
+		{
+			"anim": "singUP-joint",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				103,
+				116
+			]
+		},
+		{
+			"anim": "singRIGHT-joint",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				89,
+				102
+			]
+		},
+		{
+			"anim": "singLEFTmiss-joint",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				298,
+				310
+			]
+		},
+		{
+			"anim": "singDOWNmiss-joint",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				335,
+				347
+			]
+		},
+		{
+			"anim": "singUPmiss-joint",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				324,
+				334
+			]
+		},
+		{
+			"anim": "singRIGHTmiss-joint",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				311,
+				323
+			]
+		},
+		{
+			"anim": "singLEFT-bf1",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				133,
+				145
+			]
+		},
+		{
+			"anim": "singDOWN-bf1",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				173,
+				185
+			]
+		},
+		{
+			"anim": "singUP-bf1",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				160,
+				172
+			]
+		},
+		{
+			"anim": "singRIGHT-bf1",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				146,
+				159
+			]
+		},
+		{
+			"anim": "singLEFT-bf2",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				186,
+				198
+			]
+		},
+		{
+			"anim": "singDOWN-bf2",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				224,
+				234
+			]
+		},
+		{
+			"anim": "singUP-bf2",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				213,
+				223
+			]
+		},
+		{
+			"anim": "singRIGHT-bf2",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				199,
+				212
+			]
+		},
+		{
+			"anim": "singLEFTmiss-bf2",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				351,
+				363
+			]
+		},
+		{
+			"anim": "singDOWNmiss-bf2",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				389,
+				401
+			]
+		},
+		{
+			"anim": "singUPmiss-bf2",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				377,
+				388
+			]
+		},
+		{
+			"anim": "singRIGHTmiss-bf2",
+			"name": "sakura",
+			"loop": false,
+			"offsets": [
+				0,
+				0
+			],
+			"indices": [
+				364,
+				376
+			]
+		}
+	],
+	"originMode": "feet"
+}

@@ -1,0 +1,21 @@
+{
+	"songs": [
+		["Spaghetti", "sserafim-kazuha", [249, 207, 81], "spaghetti"]
+	],
+
+	"weekCharacters": ["sserafim-kazuha", "sserafim-sakura", "sserafim-gf"],
+	"weekBackground": "sserafim",
+
+	"weekName": "LE SSERAFIM",
+	"storyName": "LE SSERAFIM",
+	"weekBefore": "weekend1",
+	"startUnlocked": false,
+	"hideStoryMode": false,
+	"hideFreeplay": false,
+	"mod": false,
+
+	"color": [249, 207, 81],
+	"prop": null,
+	"title": "sserafim",
+	"funnyText": "SP. COLLAB 1"
+}

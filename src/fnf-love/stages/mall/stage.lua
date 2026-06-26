@@ -70,14 +70,12 @@ function M.load(songNum)
         snow = graphics.newImage(love.graphics.newImage(graphics.imagePath("week5/fgSnow")))
         snow.x, snow.y = 892, 826  -- Psych (-600,700), sf=(1,1)
 
-        topBop = love.filesystem.load("sprites/week5/top-bop.lua")()
-        topBop.x, topBop.y = 715, 26  -- Psych (-240,-90), sf=(0.33,0.33), escala 0.85
-
+        -- Posición y escala ya resueltas adentro de cada archivo (ahora
+        -- usan charts/psych/bgsprite.lua con las coordenadas reales de
+        -- Mall.hx/MallCrowd.hx -- ver comentarios en sprites/week5/*.lua).
+        topBop    = love.filesystem.load("sprites/week5/top-bop.lua")()
         bottomBop = love.filesystem.load("sprites/week5/bottom-bop.lua")()
-        bottomBop.x, bottomBop.y = 686, 464  -- Psych (-300,140), sf=(0.9,0.9)
-
-        santa = love.filesystem.load("sprites/week5/santa.lua")()
-        santa.x, santa.y = -509, 499  -- Psych (-840,150), sf=(1,1)
+        santa     = love.filesystem.load("sprites/week5/santa.lua")()
     end
 
     lastBeatNum = -1
@@ -138,9 +136,14 @@ function M.update(dt)
         local curBeat = math.floor(musicTime * bpm / 60000)
         if curBeat > (lastBeatNum or -1) then
             lastBeatNum = curBeat
-            if topBop    then topBop:animate("anim", false)    end
-            if bottomBop then bottomBop:animate("anim", false) end
-            if santa     then santa:animate("anim", false)     end
+            -- Nombres reales de Mall.hx/MallCrowd.hx (ya no el "anim"
+            -- genérico de los sprites viejos hardcodeados) -- igual que
+            -- dance() en BGSprite.hx: no reinterrumpir "hey" si está sonando.
+            if topBop then topBop:animate("Upper Crowd Bob", false) end
+            if bottomBop and (bottomBop:getAnimName() ~= "hey" or not bottomBop:isAnimated()) then
+                bottomBop:animate("Bottom Level Boppers Idle", false)
+            end
+            if santa then santa:animate("santa idle in fear", false) end
         end
     end
 end

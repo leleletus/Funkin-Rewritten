@@ -15,11 +15,22 @@ return {
 		weeks:load()
 
 		local fileName = weekJSON.songs[song][4]
-		inst   = love.audio.newSource("music/week7/" .. fileName .. "-inst.ogg",   "stream")
-		voices = love.audio.newSource("music/week7/" .. fileName .. "-voices.ogg", "stream")
+		inst   = love.audio.newSource("music/" .. fileName .. "/Inst.ogg",   "stream")
+		voices = love.audio.newSource("music/" .. fileName .. "/Voices.ogg", "stream")
 
 		self:initUI()
-		weeks:setupCountdown()
+
+		-- Tank.hx: las 3 canciones tienen su propia cutscene de intro en
+		-- Story Mode (isStoryMode && !seenCutscene real -- acá no hace
+		-- falta "seenCutscene": como M.load() recarga todo el stage en cada
+		-- intento, repetir la cutscene al reintentar es el mismo
+		-- comportamiento que Psych real, que también resetea esa bandera
+		-- en retry/restart).
+		if _G.storyMode then
+			stage.startCutscene(song, function() weeks:setupCountdown() end)
+		else
+			weeks:setupCountdown()
+		end
 	end,
 
 	initUI = function(self)
